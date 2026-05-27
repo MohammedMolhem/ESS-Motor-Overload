@@ -3,10 +3,10 @@ using System.Windows.Forms;
 
 public class MyBar : Control
 {
-    public Color LowProgressColor { get; set; } = Color.Red;
-    public Color MediumProgressColor { get; set; } = Color.Orange;
-    public Color HighProgressColor { get; set; } = Color.Yellow;
-    public Color CompleteColor { get; set; } = Color.Green;
+    public Color LowProgressColor { get; set; } = Color.Green;
+    public Color MediumProgressColor { get; set; } = Color.Yellow;
+    public Color HighProgressColor { get; set; } = Color.Orange;
+    public Color CompleteColor { get; set; } = Color.Red;
 
     public int Minimum { get; set; } = 0;
     public int Maximum { get; set; } = 100;
@@ -36,10 +36,15 @@ public class MyBar : Control
             int progressWidth = (int)((float)(this.Width - 4) * (_value - Minimum) / (Maximum - Minimum));
 
             // Determine color based on the value
-            Color progressColor = LowProgressColor;
-            if (_value > 66) progressColor = CompleteColor;
-            else if (_value > 33) progressColor = HighProgressColor;
-            else progressColor = MediumProgressColor;
+            Color progressColor;
+            if (_value >= Maximum)
+                progressColor = CompleteColor;
+            else if (_value > 66)
+                progressColor = HighProgressColor;
+            else if (_value > 33)
+                progressColor = MediumProgressColor;
+            else
+                progressColor = LowProgressColor;
 
             // Draw the progress bar background
             using (Brush backgroundBrush = new SolidBrush(Color.LightGray))

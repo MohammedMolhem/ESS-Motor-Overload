@@ -12,8 +12,11 @@ namespace EES_MotorOverload_V1
         public List<PointF> MusicPoints = new List<PointF>();
         public List<PointF> Cyclic2Points = new List<PointF>();
         public List<PointF> WaveletPoints = new List<PointF>();
+        public List<PointF> SkPoints = new List<PointF>();
         public List<float> EspritFrequencies = new List<float>();
         public bool IsComplete = false;
+        public string Mode { get; set; }
+        public TelemetryData ReportTelemetry { get; set; } = new TelemetryData();
 
         /// <summary>
         /// Set when main.c sends the closing line: ### END_REPORT (full REPORT / auto export)
@@ -38,9 +41,28 @@ namespace EES_MotorOverload_V1
 
             lock (_lock)
             {
-                if (line.StartsWith("### H750_DSP_REPORT"))
+                if (line.StartsWith("### H750_DSP"))
                 {
                     _current = new SpectralFrame();
+                    Match mm = Regex.Match(line, @"MODE=(\S+)");
+                    _current.Mode = mm.Success ? mm.Groups[1].Value.Trim() : "";
+                    return;
+                }
+
+                if (line.StartsWith("[META]") ||
+                    line.StartsWith("[MODEL_IDX]") ||
+                    line.StartsWith("[PARAMS]") ||
+                    line.StartsWith("[MUSIC_EVAL_DESC]") ||
+                    line.StartsWith("[WAVELET_META]") ||
+                    line.StartsWith("T_MS=") ||
+                    line.StartsWith("### H750_FULL_REPORT") ||
+                    line.StartsWith("### BEGIN_GRAPHDATA") ||
+                    line.StartsWith("### END_GRAPHDATA") ||
+                    line.StartsWith("### END_FULL_REPORT") ||
+                    line.StartsWith("### SECTION") ||
+                    line.StartsWith("### PROGRESS"))
+                {
+                    ParseScalarLine(line);
                     return;
                 }
 
@@ -84,6 +106,10 @@ namespace EES_MotorOverload_V1
                 {
                     ParseWaveletLine(line, _current.WaveletPoints);
                 }
+                else if (line.StartsWith("[SK_CSV]"))
+                {
+                    ParseCsvPairs(line, "[SK_CSV]", _current.SkPoints);
+                }
                 else if (line.StartsWith("[ESPRIT_HZ]"))
                 {
                     ParseEspritHzLine(line, _current.EspritFrequencies);
@@ -95,6 +121,10 @@ namespace EES_MotorOverload_V1
                 else if (line.StartsWith("[ESPRIT_TSV]"))
                 {
                     ParseEspritTsvLine(line, _current.EspritFrequencies);
+                }
+                else if (line.StartsWith("[BEARING]") || line.StartsWith("[STATOR]"))
+                {
+                    ParseScalarLine(line);
                 }
             }
         }
@@ -140,6 +170,82 @@ namespace EES_MotorOverload_V1
                 TryParseFloat(me.Groups[1].Value, out emean))
             {
                 target.Add(new PointF(freq, emean));
+            }
+        }
+
+        private void ParseScalarLine(string line)
+        {
+            if (_current == null)
+                _current = new SpectralFrame();
+
+            if (_current.ReportTelemetry == null)
+                _current.ReportTelemetry = new TelemetryData();
+
+            TelemetryData t = _current.ReportTelemetry;
+            Dictionary<string, string> kv = ParseKeyValuePairs(line);
+            if (kv.Count == 0) return;
+
+            bool isBearingLine = line.StartsWith("[BEARING]");
+            bool isStatorLine = line.StartsWith("[STATOR]");
+
+            float fv;
+            int iv;
+            byte bv;
+
+            if (isBearingLine)
+            {
+                if (kv.ContainsKey("BPFO_HZ") && TryParseFloat(kv["BPFO_HZ"], out fv)) t.BPFO_Hz = fv;
+                if (kv.ContainsKey("BPFI_HZ") && TryParseFloat(kv["BPFI_HZ"], out fv)) t.BPFI_Hz = fv;
+                if (kv.ContainsKey("BSF_HZ") && TryParseFloat(kv["BSF_HZ"], out fv)) t.BSF_Hz = fv;
+                if (kv.ContainsKey("FTF_HZ") && TryParseFloat(kv["FTF_HZ"], out fv)) t.FTF_Hz = fv;
+                if (kv.ContainsKey("FI") && TryParseFloat(kv["FI"], out fv)) t.FaultIndex = fv;
+                if (kv.ContainsKey("FI_EMA") && TryParseFloat(kv["FI_EMA"], out fv)) t.FaultIndex_Ema = fv;
+                if (kv.ContainsKey("EMA") && TryParseFloat(kv["EMA"], out fv)) t.FaultIndex_Ema = fv;
+                if (kv.ContainsKey("CUSUM") && TryParseFloat(kv["CUSUM"], out fv)) t.CusumScore = fv;
+                if (kv.ContainsKey("LV") && byte.TryParse(kv["LV"], out bv)) t.FaultLevel = bv;
+                if (kv.ContainsKey("LS") && TryParseFloat(kv["LS"], out fv)) t.Index_LS = fv;
+                if (kv.ContainsKey("MI") && TryParseFloat(kv["MI"], out fv)) t.Index_Music = fv;
+                if (kv.ContainsKey("ES") && TryParseFloat(kv["ES"], out fv)) t.Index_Esprit = fv;
+                if (kv.ContainsKey("TK") && TryParseFloat(kv["TK"], out fv)) t.Index_Teager = fv;
+                if (kv.ContainsKey("SK") && TryParseFloat(kv["SK"], out fv)) t.Index_SK = fv;
+                if (kv.ContainsKey("WV") && TryParseFloat(kv["WV"], out fv)) t.Index_Wavelet = fv;
+                if (kv.ContainsKey("CY") && TryParseFloat(kv["CY"], out fv)) t.Index_Cyclic = fv;
+                if (kv.ContainsKey("SB") && TryParseFloat(kv["SB"], out fv)) t.Index_Sideband = fv;
+                if (kv.ContainsKey("ACF") && TryParseFloat(kv["ACF"], out fv)) t.Index_EnvAcf = fv;
+                if (kv.ContainsKey("PF_O") && TryParseFloat(kv["PF_O"], out fv)) t.Index_Bpfo = fv;
+                if (kv.ContainsKey("PF_I") && TryParseFloat(kv["PF_I"], out fv)) t.Index_Bpfi = fv;
+                if (kv.ContainsKey("PF_B") && TryParseFloat(kv["PF_B"], out fv)) t.Index_Bsf = fv;
+                if (kv.ContainsKey("PF_T") && TryParseFloat(kv["PF_T"], out fv)) t.Index_Ftf = fv;
+                if (kv.ContainsKey("DOM") && byte.TryParse(kv["DOM"], out bv)) t.DominantFault = bv;
+                if (kv.ContainsKey("SKPK") && TryParseFloat(kv["SKPK"], out fv)) t.SkPeak = fv;
+                if (kv.ContainsKey("SKPK_HZ") && TryParseFloat(kv["SKPK_HZ"], out fv)) t.SkPeakHz = fv;
+                if (kv.ContainsKey("KB_HZ") && int.TryParse(kv["KB_HZ"], out iv)) t.KurtBandHz = iv;
+                else if (kv.ContainsKey("KB") && int.TryParse(kv["KB"], out iv)) t.KurtBandHz = iv;
+            }
+
+            if (isStatorLine)
+            {
+                if (kv.ContainsKey("F") && TryParseFloat(kv["F"], out fv)) t.Stator_FrequencyHz = fv;
+                if (kv.ContainsKey("SH") && int.TryParse(kv["SH"], out iv)) t.Stator_ShortLevel = iv;
+                if (kv.ContainsKey("GD") && int.TryParse(kv["GD"], out iv)) t.Stator_GndLevel = iv;
+                if (kv.ContainsKey("NSR") && TryParseFloat(kv["NSR"], out fv)) t.Stator_NSR = fv;
+                if (kv.ContainsKey("ZSR") && TryParseFloat(kv["ZSR"], out fv)) t.Stator_ZSR = fv;
+                if (kv.ContainsKey("H") && TryParseFloat(kv["H"], out fv)) t.Stator_HarmRatio = fv;
+                if (kv.ContainsKey("R") && TryParseFloat(kv["R"], out fv)) t.Stator_ResidRatio = fv;
+                if (kv.ContainsKey("Z3") && TryParseFloat(kv["Z3"], out fv)) t.Stator_ZSR_H3 = fv;
+                if (kv.ContainsKey("IMB") && TryParseFloat(kv["IMB"], out fv)) t.Stator_Imbalance = fv;
+                if (kv.ContainsKey("LV") && int.TryParse(kv["LV"], out iv)) t.Stator_FaultLevel = iv;
+            }
+
+            if (kv.ContainsKey("TEMP") && TryParseFloat(kv["TEMP"], out fv))
+            {
+                t.TemperatureC = fv;
+                t.HasTemperature = true;
+            }
+            else if (kv.ContainsKey("TEMP_C") && TryParseFloat(kv["TEMP_C"], out fv))
+            {
+                t.TemperatureC = fv;
+                t.HasTemperature = true;
             }
         }
 
@@ -238,6 +344,17 @@ namespace EES_MotorOverload_V1
             }
             return sb.Length > 0 &&
                    float.TryParse(sb.ToString(), NumberStyles.Float, CI, out result);
+        }
+
+        private static Dictionary<string, string> ParseKeyValuePairs(string line)
+        {
+            Dictionary<string, string> result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            MatchCollection matches = Regex.Matches(line, @"([A-Za-z_][A-Za-z0-9_]*)=(\S+)");
+            foreach (Match m in matches)
+            {
+                result[m.Groups[1].Value.ToUpperInvariant()] = m.Groups[2].Value;
+            }
+            return result;
         }
     }
 }

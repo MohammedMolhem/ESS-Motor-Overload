@@ -100,9 +100,23 @@ namespace EES_MotorOverload_V1
         public float Index_SK { get; set; }
         public float Index_Wavelet { get; set; }
         public float Index_Cyclic { get; set; }
+        public float Index_Sideband { get; set; }
+        public float Index_EnvAcf { get; set; }
+        public float Index_Bpfo { get; set; }
+        public float Index_Bpfi { get; set; }
+        public float Index_Bsf { get; set; }
+        public float Index_Ftf { get; set; }
+        public float FaultIndex_Ema { get; set; }
+        public float CusumScore { get; set; }
+        public float SkPeak { get; set; }
+        public float SkPeakHz { get; set; }
         public int KurtBandHz { get; set; }
+        public byte DominantFault { get; set; }
+        public float TemperatureC { get; set; }
+        public bool HasTemperature { get; set; }
 
         // Stator winding
+        public float Stator_FrequencyHz { get; set; }
         public float Stator_NSR { get; set; }
         public float Stator_ZSR { get; set; }
         public float Stator_HarmRatio { get; set; }
@@ -134,7 +148,9 @@ namespace EES_MotorOverload_V1
                    "BSF=" + BSF_Hz.ToString("F2") + "Hz " +
                    "FTF=" + FTF_Hz.ToString("F2") + "Hz " +
                    "FI=" + FaultIndex.ToString("F3") + " " +
-                   "LV=" + FaultLevel;
+                   "LV=" + FaultLevel +
+                   " EMA=" + FaultIndex_Ema.ToString("F3") +
+                   " CUSUM=" + CusumScore.ToString("F2");
         }
     }
 
@@ -576,6 +592,7 @@ namespace EES_MotorOverload_V1
                         // Skip auto-sent telemetry lines (bearing + stator)
                         // These arrive continuously from USB_Send_FaultSummary()
                         if (IsTelemetryLine(line) || IsStatorLine(line) ||
+                            IsPfLine(line) ||
                             IsSpectralLine(line))
                             continue;
 
@@ -614,7 +631,7 @@ namespace EES_MotorOverload_V1
                         _completedLines.RemoveAt(0);
 
                         // Skip concurrent telemetry
-                        if (IsTelemetryLine(line) || IsStatorLine(line))
+                        if (IsTelemetryLine(line) || IsStatorLine(line) || IsPfLine(line))
                             continue;
 
                         result.Add(line);
@@ -626,7 +643,9 @@ namespace EES_MotorOverload_V1
                 {
                     lastReceived = DateTime.UtcNow;
                     if (result.Count > 0 &&
-                        result[result.Count - 1].Contains("### END_REPORT"))
+                        (result[result.Count - 1].Contains("### END_REPORT") ||
+                         result[result.Count - 1].Contains("### END_EXPORT") ||
+                         result[result.Count - 1].Contains("### END_FULL_REPORT")))
                         break;
                 }
                 else if (result.Count > 0 &&
@@ -664,6 +683,11 @@ namespace EES_MotorOverload_V1
             return line.StartsWith("ST ") || line.StartsWith("ST2 ");
         }
 
+        private static bool IsPfLine(string line)
+        {
+            return line.StartsWith("PF ") && line.Contains("DOM=");
+        }
+
         /// <summary>
         /// Returns true if the line is part of the spectral report
         /// (auto-sent when USB_FULL_SPECTRAL_EXPORT=1).
@@ -673,15 +697,25 @@ namespace EES_MotorOverload_V1
             if (line.StartsWith("[FOURIER_CSV]") ||
                 line.StartsWith("[MUSIC_CSV]") ||
                 line.StartsWith("[CYCLIC2_CSV]") ||
+                line.StartsWith("[SK_CSV]") ||
                 line.StartsWith("[META]") ||
                 line.StartsWith("[MODEL_IDX]") ||
+                line.StartsWith("[PARAMS]") ||
+                line.StartsWith("[BEARING]") ||
+                line.StartsWith("[STATOR]") ||
                 line.StartsWith("[ESPRIT_HZ]") ||
                 line.StartsWith("[ESPRIT_CSV]") ||
                 line.StartsWith("[ESPRIT_TSV]") ||
                 line.StartsWith("[MUSIC_EVAL_DESC]") ||
                 line.StartsWith("[WAVELET_META]") ||
                 line.StartsWith("[WAVELET_CSV]") ||
-                line.StartsWith("### H750_DSP_REPORT") ||
+                line.StartsWith("### H750_DSP") ||
+                line.StartsWith("### H750_FULL_REPORT") ||
+                line.StartsWith("### BEGIN_GRAPHDATA") ||
+                line.StartsWith("### END_GRAPHDATA") ||
+                line.StartsWith("### END_FULL_REPORT") ||
+                line.StartsWith("### SECTION") ||
+                line.StartsWith("### PROGRESS") ||
                 line.StartsWith("### END_REPORT") ||
                 line.StartsWith("### END_EXPORT") ||
                 line.StartsWith("SIGNAL=") ||
@@ -827,6 +861,7 @@ namespace EES_MotorOverload_V1
                 {
                     string line = _completedLines[i];
                     if (IsTelemetryLine(line) || IsStatorLine(line) ||
+                        IsPfLine(line) ||
                         IsSpectralLine(line))
                     {
                         // Fire events for these lines before draining
@@ -1105,6 +1140,32 @@ namespace EES_MotorOverload_V1
             }
         }
 
+        public async Task<List<string>> RequestTechniqueCsv(string command)
+        {
+            try
+            {
+                _commandPending = true;
+                await Task.Delay(15);
+                ExtractCompletedLines();
+                DrainTelemetryLines();
+
+                SendTextLine(command);
+                Log("TX> " + command);
+
+                List<string> lines = await WaitForMultiLineResponse(8000, 500);
+
+                _commandPending = false;
+                Log(command + ": received " + lines.Count + " lines");
+                return lines;
+            }
+            catch (Exception ex)
+            {
+                _commandPending = false;
+                Log(command + ": " + ex.Message);
+                return new List<string>();
+            }
+        }
+
         // =====================================================================
         // TELEMETRY PROCESSING
         // =====================================================================
@@ -1133,6 +1194,31 @@ namespace EES_MotorOverload_V1
             else if (IsStatorLine(line) && _lastTelemetry != null)
             {
                 ParseStatorLine(line, _lastTelemetry);
+                OnTelemetryReceived?.Invoke(_lastTelemetry);
+            }
+            else if (IsPfLine(line) && _lastTelemetry != null)
+            {
+                Dictionary<string, string> kv = ParseKeyValuePairs(line);
+                float v;
+                byte bv;
+
+                if (kv.ContainsKey("O") && TryParseRobustFloat(kv["O"], out v))
+                    _lastTelemetry.Index_Bpfo = v;
+                if (kv.ContainsKey("I") && TryParseRobustFloat(kv["I"], out v))
+                    _lastTelemetry.Index_Bpfi = v;
+                if (kv.ContainsKey("B") && TryParseRobustFloat(kv["B"], out v))
+                    _lastTelemetry.Index_Bsf = v;
+                if (kv.ContainsKey("T") && TryParseRobustFloat(kv["T"], out v))
+                    _lastTelemetry.Index_Ftf = v;
+                if (kv.ContainsKey("EMA") && TryParseRobustFloat(kv["EMA"], out v))
+                    _lastTelemetry.FaultIndex_Ema = v;
+                if ((kv.ContainsKey("CU") && TryParseRobustFloat(kv["CU"], out v)) ||
+                    (kv.ContainsKey("CUSUM") && TryParseRobustFloat(kv["CUSUM"], out v)))
+                    _lastTelemetry.CusumScore = v;
+                if (kv.ContainsKey("DOM") && byte.TryParse(kv["DOM"], out bv))
+                    _lastTelemetry.DominantFault = bv;
+
+                TryParseTemperature(kv, _lastTelemetry);
                 OnTelemetryReceived?.Invoke(_lastTelemetry);
             }
         }
@@ -1204,10 +1290,54 @@ namespace EES_MotorOverload_V1
                 t.Index_Wavelet = v;
             if (kv.ContainsKey("CY") && TryParseRobustFloat(kv["CY"], out v))
                 t.Index_Cyclic = v;
+            if (kv.ContainsKey("SB") && TryParseRobustFloat(kv["SB"], out v))
+                t.Index_Sideband = v;
+            if (kv.ContainsKey("ACF") && TryParseRobustFloat(kv["ACF"], out v))
+                t.Index_EnvAcf = v;
+            if (kv.ContainsKey("EMA") && TryParseRobustFloat(kv["EMA"], out v))
+                t.FaultIndex_Ema = v;
+            if ((kv.ContainsKey("CU") && TryParseRobustFloat(kv["CU"], out v)) ||
+                (kv.ContainsKey("CUSUM") && TryParseRobustFloat(kv["CUSUM"], out v)))
+                t.CusumScore = v;
+            if (kv.ContainsKey("PF_O") && TryParseRobustFloat(kv["PF_O"], out v))
+                t.Index_Bpfo = v;
+            if (kv.ContainsKey("PF_I") && TryParseRobustFloat(kv["PF_I"], out v))
+                t.Index_Bpfi = v;
+            if (kv.ContainsKey("PF_B") && TryParseRobustFloat(kv["PF_B"], out v))
+                t.Index_Bsf = v;
+            if (kv.ContainsKey("PF_T") && TryParseRobustFloat(kv["PF_T"], out v))
+                t.Index_Ftf = v;
 
             int iv;
             if (kv.ContainsKey("KB") && int.TryParse(kv["KB"], out iv))
                 t.KurtBandHz = iv;
+            else if (kv.ContainsKey("KB_HZ") && int.TryParse(kv["KB_HZ"], out iv))
+                t.KurtBandHz = iv;
+
+            if (kv.ContainsKey("DOM") && byte.TryParse(kv["DOM"], out bv))
+                t.DominantFault = bv;
+
+            if (kv.ContainsKey("SKPK"))
+            {
+                string skpk = kv["SKPK"];
+                int at = skpk.IndexOf('@');
+                if (at > 0)
+                {
+                    if (TryParseRobustFloat(skpk.Substring(0, at), out v))
+                        t.SkPeak = v;
+                    string freqPart = skpk.Substring(at + 1);
+                    if (TryParseRobustFloat(freqPart, out v))
+                        t.SkPeakHz = v;
+                }
+                else if (TryParseRobustFloat(skpk, out v))
+                {
+                    t.SkPeak = v;
+                }
+            }
+            if (kv.ContainsKey("SKPK_HZ") && TryParseRobustFloat(kv["SKPK_HZ"], out v))
+                t.SkPeakHz = v;
+
+            TryParseTemperature(kv, t);
 
             return t;
         }
@@ -1223,6 +1353,8 @@ namespace EES_MotorOverload_V1
             float fv;
             int iv;
 
+            if (kv.ContainsKey("F") && TryParseRobustFloat(kv["F"], out fv))
+                target.Stator_FrequencyHz = fv;
             if (kv.ContainsKey("SH") && int.TryParse(kv["SH"], out iv))
                 target.Stator_ShortLevel = iv;
             if (kv.ContainsKey("GD") && int.TryParse(kv["GD"], out iv))
@@ -1241,6 +1373,23 @@ namespace EES_MotorOverload_V1
                 target.Stator_Imbalance = fv;
             if (kv.ContainsKey("LV") && int.TryParse(kv["LV"], out iv))
                 target.Stator_FaultLevel = iv;
+
+            TryParseTemperature(kv, target);
+        }
+
+        private static void TryParseTemperature(Dictionary<string, string> kv, TelemetryData target)
+        {
+            if (target == null || kv == null) return;
+
+            float fv;
+            if ((kv.ContainsKey("TEMP") && TryParseRobustFloat(kv["TEMP"], out fv)) ||
+                (kv.ContainsKey("TEMP_C") && TryParseRobustFloat(kv["TEMP_C"], out fv)) ||
+                (kv.ContainsKey("TEMPC") && TryParseRobustFloat(kv["TEMPC"], out fv)) ||
+                (kv.ContainsKey("TC") && TryParseRobustFloat(kv["TC"], out fv)))
+            {
+                target.TemperatureC = fv;
+                target.HasTemperature = true;
+            }
         }
 
         public void StartTelemetryMonitor()

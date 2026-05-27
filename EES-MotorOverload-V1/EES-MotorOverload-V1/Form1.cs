@@ -104,6 +104,19 @@ namespace EES_MotorOverload_V1
         private Label lblFaultIndex, lblFaultLevel;
         private LedIndicatorPanel ledLiveBpfo, ledLiveBpfi, ledLiveBsf, ledLiveFtf;
         private LedIndicatorPanel[] _ledAlarmFrequencies;
+        private readonly Dictionary<string, Label> _liveTelemetryLabels =
+            new Dictionary<string, Label>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Label> _settingsMonitorLabels =
+            new Dictionary<string, Label>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Label> _alarmBearingDetailLabels =
+            new Dictionary<string, Label>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Label> _alarmStatorDetailLabels =
+            new Dictionary<string, Label>(StringComparer.OrdinalIgnoreCase);
+        private TextBox txtSettingsTemperature;
+        private MyBar barSettingsStatorShort;
+        private MyBar barSettingsStatorGround;
+        private TextBox txtSettingsStatorShort;
+        private TextBox txtSettingsStatorGround;
 
         private RichTextBox rtbLog;
 
@@ -469,7 +482,7 @@ namespace EES_MotorOverload_V1
             {
                 Text = "Bearing Fault Indicators",
                 Location = new Point(20, topY),
-                Size = new Size(350, 380),
+                Size = new Size(350, 470),
                 Font = new Font("Tahoma", 13F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(41, 128, 185)
             };
@@ -501,9 +514,29 @@ namespace EES_MotorOverload_V1
 
             lblInner = faultLabels[0]; lblFTFAlarm = faultLabels[1];
             lblBSFAlarm = faultLabels[2]; lblOuter = faultLabels[3];
+
+            string[] bearingMetricKeys =
+            {
+                "FI", "EMA", "CUSUM", "PF_O", "PF_I", "PF_B", "PF_T", "DOM", "SKPK", "KB"
+            };
+            string[] bearingMetricLabels =
+            {
+                "Fault index:", "EMA:", "CUSUM:", "PF_O:", "PF_I:", "PF_B:", "PF_T:", "Dominant:", "SK peak:", "KB Hz:"
+            };
+            for (int i = 0; i < bearingMetricKeys.Length; i++)
+            {
+                Label valueLabel = AddKeyValueMetric(
+                    grpBearingFault,
+                    bearingMetricLabels[i],
+                    20,
+                    120,
+                    372 + i * 18,
+                    200);
+                _alarmBearingDetailLabels[bearingMetricKeys[i]] = valueLabel;
+            }
             tabAlarmMonitor.Controls.Add(grpBearingFault);
 
-            int btnY = topY + 390;
+            int btnY = topY + 480;
             btnAlarmTest = new Button
             {
                 Text = "Test All",
@@ -544,7 +577,9 @@ namespace EES_MotorOverload_V1
             {
                 Location = new Point(30, 330),
                 Size = new Size(80, 28),
-                Font = new Font("Tahoma", 12F)
+                Font = new Font("Tahoma", 12F),
+                ReadOnly = true,
+                Text = "--"
             };
             lblTempUnit = new Label
             {
@@ -561,7 +596,7 @@ namespace EES_MotorOverload_V1
             {
                 Text = "Stator Short Monitoring",
                 Location = new Point(620, topY),
-                Size = new Size(380, 160),
+                Size = new Size(380, 240),
                 Font = new Font("Tahoma", 11F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(41, 128, 185)
             };
@@ -571,22 +606,42 @@ namespace EES_MotorOverload_V1
                 Location = new Point(120, 50),
                 Size = new Size(240, 50),
                 Minimum = 0,
-                Maximum = 100
+                Maximum = 100,
+                Enabled = false
             };
 
             txtShortValue = new TextBox
             {
                 Location = new Point(10, 55),
                 Size = new Size(100, 28),
-                Font = new Font("Tahoma", 10F)
+                Font = new Font("Tahoma", 10F),
+                ReadOnly = true,
+                Text = "0%"
             };
-
-            trkStatorShort.Scroll += (s, e) =>
-            {
-                txtShortValue.Text = trkStatorShort.Value.ToString();
-            };
-
             grpStatorShort.Controls.AddRange(new Control[] { trkStatorShort, txtShortValue });
+
+            string[] statorMetricKeys =
+            {
+                "SHORT", "GROUND", "NSR", "ZSR", "IMB", "HARM", "RESID", "Z3"
+            };
+            string[] statorMetricLabels =
+            {
+                "Short LV:", "Ground LV:", "NSR:", "ZSR:", "Imbalance:", "Harm ratio:", "Resid ratio:", "Z3:"
+            };
+            for (int i = 0; i < statorMetricKeys.Length; i++)
+            {
+                int labelX = (i < 4) ? 12 : 190;
+                int valueX = (i < 4) ? 90 : 278;
+                int yPos = 110 + (i % 4) * 22;
+                Label valueLabel = AddKeyValueMetric(
+                    grpStatorShort,
+                    statorMetricLabels[i],
+                    labelX,
+                    valueX,
+                    yPos,
+                    86);
+                _alarmStatorDetailLabels[statorMetricKeys[i]] = valueLabel;
+            }
             tabAlarmMonitor.Controls.Add(grpStatorShort);
         }
         
@@ -838,21 +893,30 @@ namespace EES_MotorOverload_V1
             UpdateTechniqueButtonColors();
             SetTechniqueButtonsEnabled(false);
 
-            // Request fresh data from STM32 if connected
             if (_comm != null && _comm.IsConnected)
             {
-                LogUI("Requesting spectral report for " + tech.ToString() + "...", Color.Yellow);
+                string cmd;
+                switch (tech)
+                {
+                    case SpectralTechnique.Fourier: cmd = "FFTCSV"; break;
+                    case SpectralTechnique.Music: cmd = "MUSICCSV"; break;
+                    case SpectralTechnique.Esprit: cmd = "ESPRITCSV"; break;
+                    case SpectralTechnique.Cyclostationary: cmd = "CYCLIC2CSV"; break;
+                    default: cmd = "FFTCSV"; break;
+                }
+
+                LogUI("Requesting " + cmd + "...", Color.Yellow);
                 if (lblFinalReportStatus != null)
                 {
-                    lblFinalReportStatus.Text = "Final report (STM32): receiving… (waiting for ### END_REPORT)";
+                    lblFinalReportStatus.Text = "Requesting " + cmd + "…";
                     lblFinalReportStatus.ForeColor = Color.DarkGoldenrod;
                 }
 
-                List<string> lines = await _comm.RequestReport();
+                List<string> lines = await _comm.RequestTechniqueCsv(cmd);
 
                 if (lines != null && lines.Count > 0)
                 {
-                    LogUI("Report: " + lines.Count + " lines received", Color.LimeGreen);
+                    LogUI(cmd + ": " + lines.Count + " lines received", Color.LimeGreen);
                     foreach (string line in lines)
                     {
                         _reportParser.ParseLine(line);
@@ -860,16 +924,15 @@ namespace EES_MotorOverload_V1
                 }
                 else
                 {
-                    LogUI("Report: no data received", Color.Red);
+                    LogUI(cmd + ": no data received", Color.Red);
                     if (lblFinalReportStatus != null)
                     {
-                        lblFinalReportStatus.Text = "Final report: no data (timeout or empty response)";
+                        lblFinalReportStatus.Text = cmd + ": no data (timeout or empty response)";
                         lblFinalReportStatus.ForeColor = Color.OrangeRed;
                     }
                 }
             }
 
-            // Display using whatever data we have (fresh or cached)
             RedrawChartsForCurrentTechnique();
             SetTechniqueButtonsEnabled(true);
         }
@@ -918,14 +981,14 @@ namespace EES_MotorOverload_V1
                     techName = "Fourier";
                     break;
                 case SpectralTechnique.Music:
-                    points = _lastFrame.MusicPoints;
+                    points = NormalizePointsToMaxOne(_lastFrame.MusicPoints);
                     techName = "MUSIC";
                     break;
                 case SpectralTechnique.Esprit:
                     DisplayEspritOnCharts(_lastFrame.EspritFrequencies);
                     return;
                 case SpectralTechnique.Cyclostationary:
-                    points = _lastFrame.Cyclic2Points;
+                    points = NormalizePointsToMaxOne(_lastFrame.Cyclic2Points);
                     techName = "Cyclostationary";
                     break;
             }
@@ -946,9 +1009,28 @@ namespace EES_MotorOverload_V1
             UpdateChartFromPoints(_xyChart2, points, techName + " Ph2");
             UpdateChartFromPoints(_xyChart3, points, techName + " Ph3");
 
-            lblPhase1.Text = "Phase 1 — " + techName;
-            lblPhase2.Text = "Phase 2 — " + techName;
-            lblPhase3.Text = "Phase 3 — " + techName;
+            lblPhase1.Text = "Phase 1 / Mean Spectrum — " + techName;
+            lblPhase2.Text = "Phase 2 / Mean Spectrum — " + techName;
+            lblPhase3.Text = "Phase 3 / Mean Spectrum — " + techName;
+        }
+
+        private List<PointF> NormalizePointsToMaxOne(List<PointF> pts)
+        {
+            if (pts == null || pts.Count == 0) return pts;
+
+            float maxVal = 0f;
+            for (int i = 0; i < pts.Count; i++)
+            {
+                if (pts[i].Y > maxVal) maxVal = pts[i].Y;
+            }
+            if (maxVal < 1e-30f) return pts;
+
+            List<PointF> result = new List<PointF>(pts.Count);
+            for (int i = 0; i < pts.Count; i++)
+            {
+                result.Add(new PointF(pts[i].X, pts[i].Y / maxVal));
+            }
+            return result;
         }
 
         /// <summary>
@@ -1090,15 +1172,34 @@ namespace EES_MotorOverload_V1
                 this.BeginInvoke(new Action(delegate
                 {
                     _lastFrame = frame;
+                    if (frame.ReportTelemetry != null &&
+                        (frame.ReportTelemetry.BPFO_Hz != 0f ||
+                         frame.ReportTelemetry.BPFI_Hz != 0f ||
+                         frame.ReportTelemetry.BSF_Hz != 0f ||
+                         frame.ReportTelemetry.FTF_Hz != 0f ||
+                         frame.ReportTelemetry.FaultIndex != 0f ||
+                         frame.ReportTelemetry.Index_Bpfo != 0f ||
+                         frame.ReportTelemetry.Stator_NSR != 0f ||
+                         frame.ReportTelemetry.HasTemperature))
+                    {
+                        ApplyTelemetryToUi(frame.ReportTelemetry);
+                    }
                     RedrawChartsForCurrentTechnique();
 
                     string fin = string.IsNullOrEmpty(frame.FinalReportSummary)
                         ? "(marker not set)"
                         : frame.FinalReportSummary;
+                    string mode = string.IsNullOrEmpty(frame.Mode) ? "n/a" : frame.Mode;
                     if (lblFinalReportStatus != null)
                     {
-                        lblFinalReportStatus.Text = "Final report: complete — " + fin + " — " +
-                            DateTime.Now.ToString("HH:mm:ss");
+                        lblFinalReportStatus.Text = "Final report: complete — " + fin +
+                            " | mode=" + mode +
+                            " | FFT=" + frame.FourierPoints.Count +
+                            " MUSIC=" + frame.MusicPoints.Count +
+                            " CY=" + frame.Cyclic2Points.Count +
+                            " ESPRIT=" + frame.EspritFrequencies.Count +
+                            " SK=" + frame.SkPoints.Count +
+                            " — " + DateTime.Now.ToString("HH:mm:ss");
                         lblFinalReportStatus.ForeColor = Color.ForestGreen;
                     }
 
@@ -1107,7 +1208,8 @@ namespace EES_MotorOverload_V1
                           " MUSIC=" + frame.MusicPoints.Count +
                           " Cyclic2=" + frame.Cyclic2Points.Count +
                           " ESPRIT=" + frame.EspritFrequencies.Count +
-                          " Wavelet=" + frame.WaveletPoints.Count + " pts",
+                          " Wavelet=" + frame.WaveletPoints.Count +
+                          " SK=" + frame.SkPoints.Count + " pts",
                           Color.Cyan);
                 }));
             }
@@ -1337,60 +1439,71 @@ namespace EES_MotorOverload_V1
             {
                 Text = "Live Telemetry from Controller",
                 Location = new Point(330, y),
-                Size = new Size(620, 105),
+                Size = new Size(620, 292),
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(39, 174, 96)
             };
 
-            string[] lvLabels = { "BPFO (Hz):", "BPFI (Hz):", "BSF (Hz):",
-                                   "FTF (Hz):", "Fault Index:", "Fault Level:" };
-            Label[] lvValues = new Label[6];
-
             const int ledSz = 20;
-            for (int i = 0; i < 3; i++)
+            string[] liveLeftTexts =
             {
-                SettingsMakeLabel(lvLabels[i], 10, 24 + i * 25, grpLive, 9F);
-                lvValues[i] = new Label
-                {
-                    Text = "----",
-                    Location = new Point(126, 24 + i * 25),
-                    Size = new Size(165, 20),
-                    Font = new Font("Consolas", 9.5F, FontStyle.Bold),
-                    ForeColor = Color.Black,
-                    Parent = grpLive
-                };
-                var led = new LedIndicatorPanel { Location = new Point(104, 22 + i * 25), Size = new Size(ledSz, ledSz) };
-                grpLive.Controls.Add(led);
-                if (i == 0) ledLiveBpfo = led;
-                else if (i == 1) ledLiveBpfi = led;
-                else ledLiveBsf = led;
-            }
+                "BPFO (Hz):", "BPFI (Hz):", "BSF (Hz):", "FTF (Hz):",
+                "Fault Index:", "Fault Level:", "LS:", "MI:", "ES:", "TK:", "SK:", "WV:"
+            };
+            string[] liveLeftKeys =
+            {
+                "BPFO_HZ", "BPFI_HZ", "BSF_HZ", "FTF_HZ",
+                "FI", "LV", "LS", "MI", "ES", "TK", "SK", "WV"
+            };
+            string[] liveRightTexts =
+            {
+                "CY:", "SB:", "ACF:", "SKPK@Hz:", "KB (Hz):", "CUSUM:", "EMA:",
+                "PF_O:", "PF_I:", "PF_B:", "PF_T:", "Dominant:"
+            };
+            string[] liveRightKeys =
+            {
+                "CY", "SB", "ACF", "SKPK", "KB", "CUSUM", "EMA",
+                "PF_O", "PF_I", "PF_B", "PF_T", "DOM"
+            };
 
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < liveLeftKeys.Length; i++)
             {
-                SettingsMakeLabel(lvLabels[i + 3], 310, 24 + i * 25, grpLive, 9F);
-                lvValues[i + 3] = new Label
+                int yRow = 24 + i * 21;
+                SettingsMakeLabel(liveLeftTexts[i], 10, yRow, grpLive, 8.75F);
+                Label valueLabel = SettingsMakeValueLabel(126, yRow, 160, grpLive);
+                _liveTelemetryLabels[liveLeftKeys[i]] = valueLabel;
+                if (i < 4)
                 {
-                    Text = "----",
-                    Location = new Point(390, 24 + i * 25),
-                    Size = new Size(165, 20),
-                    Font = new Font("Consolas", 9.5F, FontStyle.Bold),
-                    ForeColor = Color.Black,
-                    Parent = grpLive
-                };
-                if (i == 0)
-                {
-                    ledLiveFtf = new LedIndicatorPanel { Location = new Point(368, 22), Size = new Size(ledSz, ledSz) };
-                    grpLive.Controls.Add(ledLiveFtf);
+                    LedIndicatorPanel led = new LedIndicatorPanel
+                    {
+                        Location = new Point(104, yRow - 2),
+                        Size = new Size(ledSz, ledSz)
+                    };
+                    grpLive.Controls.Add(led);
+                    if (i == 0) ledLiveBpfo = led;
+                    else if (i == 1) ledLiveBpfi = led;
+                    else if (i == 2) ledLiveBsf = led;
+                    else ledLiveFtf = led;
                 }
             }
 
-            lblBpfoHz = lvValues[0]; lblBpfiHz = lvValues[1];
-            lblBsfHz = lvValues[2]; lblFtfHz = lvValues[3];
-            lblFaultIndex = lvValues[4]; lblFaultLevel = lvValues[5];
+            for (int i = 0; i < liveRightKeys.Length; i++)
+            {
+                int yRow = 24 + i * 21;
+                SettingsMakeLabel(liveRightTexts[i], 310, yRow, grpLive, 8.75F);
+                Label valueLabel = SettingsMakeValueLabel(410, yRow, 190, grpLive);
+                _liveTelemetryLabels[liveRightKeys[i]] = valueLabel;
+            }
+
+            lblBpfoHz = _liveTelemetryLabels["BPFO_HZ"];
+            lblBpfiHz = _liveTelemetryLabels["BPFI_HZ"];
+            lblBsfHz = _liveTelemetryLabels["BSF_HZ"];
+            lblFtfHz = _liveTelemetryLabels["FTF_HZ"];
+            lblFaultIndex = _liveTelemetryLabels["FI"];
+            lblFaultLevel = _liveTelemetryLabels["LV"];
             tabSettings.Controls.Add(grpLive);
 
-            y += 110;
+            y += 300;
 
             // ── Terminal ──
             SettingsMakeLabel("Terminal:", 330, y + 8, tabSettings, 9F).ForeColor =
@@ -1435,66 +1548,51 @@ namespace EES_MotorOverload_V1
             {
                 Text = "Alarm Monitor",
                 Location = new Point(10, y),
-                Size = new Size(940, 60),
+                Size = new Size(940, 108),
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                  ForeColor = Color.FromArgb(255, 0, 0)
             };
             tabSettings.Controls.Add(grpMonitor);
 
-            string TLabel = "Temperature(°C):";
-            TextBox TempBox = new TextBox{}; 
-            SettingsMakeLabel(TLabel, 10, 28, grpMonitor);
-            TempBox = SettingsMakeTextBox(133, 28 , 100, " ", grpMonitor);
-            TempBox.Enabled= false;
-            
-            int h = 300;
-            // Add "Stator Short Monitoring" label
-            Label lblStatorShortMonitoring = new Label
-            {
-                Text = "Stator Short Monitoring:",
-                Location = new Point(h, 28),
-                Size = new Size(180, 25),
-                Font = new Font("Segoe UI", 10F, FontStyle.Regular),
-                ForeColor = Color.Black
-            };
-            grpMonitor.Controls.Add(lblStatorShortMonitoring);
+            SettingsMakeLabel("Temperature (°C):", 10, 30, grpMonitor);
+            txtSettingsTemperature = SettingsMakeTextBox(132, 28, 90, "--", grpMonitor);
+            txtSettingsTemperature.ReadOnly = true;
 
-                        
-            h += 180;
-            // Add MyBar to show progression
-            MyBar barStatorShort = new MyBar
+            SettingsMakeLabel("Stator fault:", 245, 30, grpMonitor);
+            barSettingsStatorShort = new MyBar
             {
-                Location = new Point(h, 28),
-                Size = new Size(300, 25),
-                LowProgressColor = Color.Green,
-                MediumProgressColor = Color.Yellow,
-                HighProgressColor = Color.Orange,
-                CompleteColor = Color.Red,
+                Location = new Point(330, 28),
+                Size = new Size(260, 24),
                 Minimum = 0,
                 Maximum = 100,
-                Value = 50 // Example initial value
+                Value = 0
             };
-            grpMonitor.Controls.Add(barStatorShort);
+            grpMonitor.Controls.Add(barSettingsStatorShort);
 
-            h += 310;
-            // Add TextBox to show the value
-            TextBox txtStatorShort = new TextBox
+            txtSettingsStatorShort = SettingsMakeTextBox(600, 28, 72, "0%", grpMonitor);
+            txtSettingsStatorShort.ReadOnly = true;
+
+            SettingsMakeLabel("Ground level:", 245, 66, grpMonitor);
+            barSettingsStatorGround = new MyBar
             {
-                Location = new Point(h, 28),
-                Size = new Size(80, 25),
-                Font = new Font("Segoe UI", 10F),
-                Enabled = false // Read-only
+                Location = new Point(330, 64),
+                Size = new Size(260, 24),
+                Minimum = 0,
+                Maximum = 100,
+                Value = 0
             };
-            grpMonitor.Controls.Add(txtStatorShort); 
+            grpMonitor.Controls.Add(barSettingsStatorGround);
 
-            // Example of setting Stator Short Monitoring value dynamically
-            txtStatorShort.Text = "50";       // Bind this to a dynamic source as required
-            barStatorShort.Value = 30;       // Adjust dynamically as required
+            txtSettingsStatorGround = SettingsMakeTextBox(600, 64, 72, "0%", grpMonitor);
+            txtSettingsStatorGround.ReadOnly = true;
 
+            _settingsMonitorLabels["SHORT"] = AddKeyValueMetric(grpMonitor, "Short LV:", 690, 770, 30, 70);
+            _settingsMonitorLabels["GROUND"] = AddKeyValueMetric(grpMonitor, "Gnd LV:", 690, 770, 52, 70);
+            _settingsMonitorLabels["NSR"] = AddKeyValueMetric(grpMonitor, "NSR:", 690, 770, 74, 70);
+            _settingsMonitorLabels["ZSR"] = AddKeyValueMetric(grpMonitor, "ZSR:", 835, 890, 30, 50);
+            _settingsMonitorLabels["TEMP"] = AddKeyValueMetric(grpMonitor, "Temp:", 835, 890, 52, 50);
 
-
-
-            y += 70;
+            y += 118;
 
             // ── Action Buttons ──
             int bx = 10;
@@ -1592,6 +1690,26 @@ namespace EES_MotorOverload_V1
                 Text = defVal,
                 Parent = parent
             };
+        }
+
+        private Label SettingsMakeValueLabel(int x, int y, int w, Control parent)
+        {
+            return new Label
+            {
+                Text = "----",
+                Location = new Point(x, y),
+                Size = new Size(w, 20),
+                Font = new Font("Consolas", 9.25F, FontStyle.Bold),
+                ForeColor = Color.Black,
+                Parent = parent
+            };
+        }
+
+        private Label AddKeyValueMetric(Control parent, string labelText, int labelX, int valueX, int y, int valueWidth)
+        {
+            SettingsMakeLabel(labelText, labelX, y, parent, 9F);
+            Label valueLabel = SettingsMakeValueLabel(valueX, y, valueWidth, parent);
+            return valueLabel;
         }
 
         private Button SettingsMakeActionButton(string text, int x, int y, int w, Color bgColor)
@@ -1730,6 +1848,7 @@ namespace EES_MotorOverload_V1
                         "Final report (STM32): waiting — stream or Request Report; complete = ### END_REPORT / ### END_EXPORT.";
                     lblFinalReportStatus.ForeColor = Color.FromArgb(100, 100, 100);
                 }
+                ResetTelemetryDisplays();
                 UpdateAlarmMonitorDashboard(null);
                 ApplyFrequencyLeds(3, true);
             }
@@ -1750,6 +1869,7 @@ namespace EES_MotorOverload_V1
                         "Final report (STM32): not connected — connect to receive ### END_REPORT / ### END_EXPORT.";
                     lblFinalReportStatus.ForeColor = Color.FromArgb(100, 100, 100);
                 }
+                ResetTelemetryDisplays();
                 UpdateAlarmMonitorDashboard(null);
                 ApplyFrequencyLeds(0, false);
             }
@@ -2002,6 +2122,57 @@ namespace EES_MotorOverload_V1
             LogUI(msg, Color.Gray);
         }
 
+        private void ApplyTelemetryToUi(TelemetryData t)
+        {
+            if (t == null) return;
+
+            UpdateLiveTelemetryLabels(t);
+            UpdateSettingsMonitorGroup(t);
+
+            lblFaultLevel.Text = t.FaultLevelString;
+            switch (t.FaultLevel)
+            {
+                case 0: lblFaultLevel.ForeColor = Color.Green; break;
+                case 1: lblFaultLevel.ForeColor = Color.Orange; break;
+                case 2: lblFaultLevel.ForeColor = Color.Red; break;
+                default: lblFaultLevel.ForeColor = Color.Gray; break;
+            }
+
+            UpdateAlarmMonitorDashboard(t);
+
+            Color bearingAccent = AlarmSeverityAccentColor(t.FaultLevel);
+            lblInner.ForeColor = bearingAccent;
+            lblFTFAlarm.ForeColor = bearingAccent;
+            lblBSFAlarm.ForeColor = bearingAccent;
+            lblOuter.ForeColor = bearingAccent;
+            lblInner.Text = "BPFI (inner): " + t.BPFI_Hz.ToString("F2") + " Hz";
+            lblFTFAlarm.Text = "FTF (cage): " + t.FTF_Hz.ToString("F2") + " Hz";
+            lblBSFAlarm.Text = "BSF (ball): " + t.BSF_Hz.ToString("F2") + " Hz";
+            lblOuter.Text = "BPFO (outer): " + t.BPFO_Hz.ToString("F2") + " Hz";
+
+            SetMetricLabel(_alarmBearingDetailLabels, "FI", t.FaultIndex.ToString("F4"));
+            SetMetricLabel(_alarmBearingDetailLabels, "EMA", t.FaultIndex_Ema.ToString("F4"));
+            SetMetricLabel(_alarmBearingDetailLabels, "CUSUM", t.CusumScore.ToString("F2"));
+            SetMetricLabel(_alarmBearingDetailLabels, "PF_O", t.Index_Bpfo.ToString("F4"));
+            SetMetricLabel(_alarmBearingDetailLabels, "PF_I", t.Index_Bpfi.ToString("F4"));
+            SetMetricLabel(_alarmBearingDetailLabels, "PF_B", t.Index_Bsf.ToString("F4"));
+            SetMetricLabel(_alarmBearingDetailLabels, "PF_T", t.Index_Ftf.ToString("F4"));
+            SetMetricLabel(_alarmBearingDetailLabels, "DOM", DominantFaultToText(t.DominantFault));
+            SetMetricLabel(_alarmBearingDetailLabels, "SKPK", t.SkPeak.ToString("F4") + " @ " + t.SkPeakHz.ToString("F2") + " Hz");
+            SetMetricLabel(_alarmBearingDetailLabels, "KB", t.KurtBandHz.ToString(CultureInfo.InvariantCulture));
+
+            SetMetricLabel(_alarmStatorDetailLabels, "SHORT", t.Stator_ShortLevel.ToString(CultureInfo.InvariantCulture));
+            SetMetricLabel(_alarmStatorDetailLabels, "GROUND", t.Stator_GndLevel.ToString(CultureInfo.InvariantCulture));
+            SetMetricLabel(_alarmStatorDetailLabels, "NSR", t.Stator_NSR.ToString("F4"));
+            SetMetricLabel(_alarmStatorDetailLabels, "ZSR", t.Stator_ZSR.ToString("F4"));
+            SetMetricLabel(_alarmStatorDetailLabels, "IMB", t.Stator_Imbalance.ToString("F1") + "%");
+            SetMetricLabel(_alarmStatorDetailLabels, "HARM", t.Stator_HarmRatio.ToString("F4"));
+            SetMetricLabel(_alarmStatorDetailLabels, "RESID", t.Stator_ResidRatio.ToString("F4"));
+            SetMetricLabel(_alarmStatorDetailLabels, "Z3", t.Stator_ZSR_H3.ToString("F4"));
+
+            ApplyFrequencyLeds(t.FaultLevel, true);
+        }
+
         private void Comm_OnTelemetry(TelemetryData t)
         {
             if (_formClosing) return;
@@ -2010,34 +2181,7 @@ namespace EES_MotorOverload_V1
             {
                 this.BeginInvoke(new Action(delegate
                 {
-                    lblBpfoHz.Text = t.BPFO_Hz.ToString("F2") + " Hz";
-                    lblBpfiHz.Text = t.BPFI_Hz.ToString("F2") + " Hz";
-                    lblBsfHz.Text = t.BSF_Hz.ToString("F2") + " Hz";
-                    lblFtfHz.Text = t.FTF_Hz.ToString("F2") + " Hz";
-                    lblFaultIndex.Text = t.FaultIndex.ToString("F4");
-
-                    lblFaultLevel.Text = t.FaultLevelString;
-                    switch (t.FaultLevel)
-                    {
-                        case 0: lblFaultLevel.ForeColor = Color.Green; break;
-                        case 1: lblFaultLevel.ForeColor = Color.Orange; break;
-                        case 2: lblFaultLevel.ForeColor = Color.Red; break;
-                        default: lblFaultLevel.ForeColor = Color.Gray; break;
-                    }
-
-                    UpdateAlarmMonitorDashboard(t);
-
-                    Color bearingAccent = AlarmSeverityAccentColor(t.FaultLevel);
-                    lblInner.ForeColor = bearingAccent;
-                    lblFTFAlarm.ForeColor = bearingAccent;
-                    lblBSFAlarm.ForeColor = bearingAccent;
-                    lblOuter.ForeColor = bearingAccent;
-                    lblInner.Text = "BPFI (inner): " + t.BPFI_Hz.ToString("F2") + " Hz";
-                    lblFTFAlarm.Text = "FTF (cage): " + t.FTF_Hz.ToString("F2") + " Hz";
-                    lblBSFAlarm.Text = "BSF (ball): " + t.BSF_Hz.ToString("F2") + " Hz";
-                    lblOuter.Text = "BPFO (outer): " + t.BPFO_Hz.ToString("F2") + " Hz";
-
-                    ApplyFrequencyLeds(t.FaultLevel, true);
+                    ApplyTelemetryToUi(t);
                 }));
             }
             catch { }
@@ -2087,6 +2231,132 @@ namespace EES_MotorOverload_V1
             }
         }
 
+        private static int LevelToPercent(int level)
+        {
+            if (level <= 0) return 0;
+            if (level >= 3) return 100;
+            return level * 33;
+        }
+
+        private static string DominantFaultToText(byte dominantFault)
+        {
+            switch (dominantFault)
+            {
+                case 1: return "BPFO (outer)";
+                case 2: return "BPFI (inner)";
+                case 3: return "BSF (ball)";
+                case 4: return "FTF (cage)";
+                default: return "none";
+            }
+        }
+
+        private static string FormatTemperature(TelemetryData t)
+        {
+            return (t != null && t.HasTemperature)
+                ? t.TemperatureC.ToString("F1") + " °C"
+                : "--";
+        }
+
+        private static void SetMetricLabel(Dictionary<string, Label> target, string key, string value)
+        {
+            if (target == null || !target.ContainsKey(key) || target[key] == null) return;
+            target[key].Text = value;
+        }
+
+        private void UpdateLiveTelemetryLabels(TelemetryData t)
+        {
+            if (t == null)
+            {
+                foreach (KeyValuePair<string, Label> entry in _liveTelemetryLabels)
+                {
+                    if (entry.Value != null) entry.Value.Text = "----";
+                }
+                return;
+            }
+
+            SetMetricLabel(_liveTelemetryLabels, "BPFO_HZ", t.BPFO_Hz.ToString("F2") + " Hz");
+            SetMetricLabel(_liveTelemetryLabels, "BPFI_HZ", t.BPFI_Hz.ToString("F2") + " Hz");
+            SetMetricLabel(_liveTelemetryLabels, "BSF_HZ", t.BSF_Hz.ToString("F2") + " Hz");
+            SetMetricLabel(_liveTelemetryLabels, "FTF_HZ", t.FTF_Hz.ToString("F2") + " Hz");
+            SetMetricLabel(_liveTelemetryLabels, "FI", t.FaultIndex.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "LV", t.FaultLevelString);
+            SetMetricLabel(_liveTelemetryLabels, "LS", t.Index_LS.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "MI", t.Index_Music.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "ES", t.Index_Esprit.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "TK", t.Index_Teager.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "SK", t.Index_SK.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "WV", t.Index_Wavelet.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "CY", t.Index_Cyclic.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "SB", t.Index_Sideband.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "ACF", t.Index_EnvAcf.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "SKPK", t.SkPeak.ToString("F4") + " @ " + t.SkPeakHz.ToString("F2") + " Hz");
+            SetMetricLabel(_liveTelemetryLabels, "KB", t.KurtBandHz.ToString(CultureInfo.InvariantCulture));
+            SetMetricLabel(_liveTelemetryLabels, "CUSUM", t.CusumScore.ToString("F2"));
+            SetMetricLabel(_liveTelemetryLabels, "EMA", t.FaultIndex_Ema.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "PF_O", t.Index_Bpfo.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "PF_I", t.Index_Bpfi.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "PF_B", t.Index_Bsf.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "PF_T", t.Index_Ftf.ToString("F4"));
+            SetMetricLabel(_liveTelemetryLabels, "DOM", DominantFaultToText(t.DominantFault));
+        }
+
+        private void UpdateSettingsMonitorGroup(TelemetryData t)
+        {
+            if (txtSettingsTemperature == null) return;
+
+            if (t == null)
+            {
+                txtSettingsTemperature.Text = "--";
+                if (txtSettingsStatorShort != null) txtSettingsStatorShort.Text = "0%";
+                if (txtSettingsStatorGround != null) txtSettingsStatorGround.Text = "0%";
+                if (barSettingsStatorShort != null) barSettingsStatorShort.Value = 0;
+                if (barSettingsStatorGround != null) barSettingsStatorGround.Value = 0;
+                foreach (KeyValuePair<string, Label> entry in _settingsMonitorLabels)
+                {
+                    if (entry.Value != null) entry.Value.Text = "----";
+                }
+                return;
+            }
+
+            int statorFaultPercent = LevelToPercent(t.Stator_FaultLevel);
+            int statorGroundPercent = LevelToPercent(t.Stator_GndLevel);
+
+            txtSettingsTemperature.Text = FormatTemperature(t);
+            if (txtSettingsStatorShort != null)
+                txtSettingsStatorShort.Text = statorFaultPercent.ToString(CultureInfo.InvariantCulture) + "%";
+            if (txtSettingsStatorGround != null)
+                txtSettingsStatorGround.Text = statorGroundPercent.ToString(CultureInfo.InvariantCulture) + "%";
+            if (barSettingsStatorShort != null)
+                barSettingsStatorShort.Value = statorFaultPercent;
+            if (barSettingsStatorGround != null)
+                barSettingsStatorGround.Value = statorGroundPercent;
+
+            SetMetricLabel(_settingsMonitorLabels, "SHORT", t.Stator_ShortLevel.ToString(CultureInfo.InvariantCulture));
+            SetMetricLabel(_settingsMonitorLabels, "GROUND", t.Stator_GndLevel.ToString(CultureInfo.InvariantCulture));
+            SetMetricLabel(_settingsMonitorLabels, "NSR", t.Stator_NSR.ToString("F4"));
+            SetMetricLabel(_settingsMonitorLabels, "ZSR", t.Stator_ZSR.ToString("F4"));
+            SetMetricLabel(_settingsMonitorLabels, "TEMP", FormatTemperature(t));
+        }
+
+        private void ResetTelemetryDisplays()
+        {
+            UpdateLiveTelemetryLabels(null);
+            UpdateSettingsMonitorGroup(null);
+
+            if (txtTemperature != null) txtTemperature.Text = "--";
+            if (txtShortValue != null) txtShortValue.Text = "0%";
+            if (trkStatorShort != null) trkStatorShort.Value = 0;
+
+            foreach (KeyValuePair<string, Label> entry in _alarmBearingDetailLabels)
+            {
+                if (entry.Value != null) entry.Value.Text = "----";
+            }
+            foreach (KeyValuePair<string, Label> entry in _alarmStatorDetailLabels)
+            {
+                if (entry.Value != null) entry.Value.Text = "----";
+            }
+        }
+
         /// <summary>
         /// Alarm Monitor tab: professional condition summary (green / yellow / red) from STM32 telemetry.
         /// </summary>
@@ -2107,6 +2377,9 @@ namespace EES_MotorOverload_V1
                     cb0.BadgeBackColor = Color.FromArgb(149, 165, 166);
                 pnlAlarmStatusCard.Invalidate();
                 pnlAlarmSeverityBadge?.Invalidate();
+                if (txtTemperature != null) txtTemperature.Text = "--";
+                if (txtShortValue != null) txtShortValue.Text = "0%";
+                if (trkStatorShort != null) trkStatorShort.Value = 0;
                 return;
             }
 
@@ -2122,6 +2395,9 @@ namespace EES_MotorOverload_V1
                     cb1.BadgeBackColor = Color.FromArgb(149, 165, 166);
                 pnlAlarmStatusCard.Invalidate();
                 pnlAlarmSeverityBadge?.Invalidate();
+                if (txtTemperature != null) txtTemperature.Text = "--";
+                if (txtShortValue != null) txtShortValue.Text = "0%";
+                if (trkStatorShort != null) trkStatorShort.Value = 0;
                 return;
             }
 
@@ -2148,18 +2424,28 @@ namespace EES_MotorOverload_V1
                     break;
             }
 
+            if (txtTemperature != null)
+                txtTemperature.Text = t.HasTemperature ? t.TemperatureC.ToString("F1") : "--";
+            if (trkStatorShort != null)
+                trkStatorShort.Value = LevelToPercent(t.Stator_FaultLevel);
+            if (txtShortValue != null)
+                txtShortValue.Text = LevelToPercent(t.Stator_FaultLevel).ToString(CultureInfo.InvariantCulture) + "%";
+
             lblAlarmStatusBearing.Text =
                 "Bearing: " + t.FaultLevelString +
-                " | Fault index " + t.FaultIndex.ToString("F4") +
-                " | Kurtogram band " + t.KurtBandHz + " Hz";
+                " | FI=" + t.FaultIndex.ToString("F4") +
+                " EMA=" + t.FaultIndex_Ema.ToString("F4") +
+                " CUSUM=" + t.CusumScore.ToString("F2") +
+                " | KB=" + t.KurtBandHz + " Hz" +
+                " | DOM=" + DominantFaultToText(t.DominantFault);
 
             lblAlarmStatusStator.Text =
                 "Stator: short L" + t.Stator_ShortLevel +
-                ", ground L" + t.Stator_GndLevel +
-                ", combined LV " + t.Stator_FaultLevel +
-                " | NSR " + t.Stator_NSR.ToString("F3") +
-                ", ZSR " + t.Stator_ZSR.ToString("F3") +
-                ", imbalance " + t.Stator_Imbalance.ToString("F1") + "%";
+                " / gnd L" + t.Stator_GndLevel +
+                " | NSR=" + t.Stator_NSR.ToString("F4") +
+                " ZSR=" + t.Stator_ZSR.ToString("F4") +
+                " IMB=" + t.Stator_Imbalance.ToString("F1") + "%" +
+                " H=" + t.Stator_HarmRatio.ToString("F4");
 
             pnlAlarmStatusCard.Invalidate();
             pnlAlarmSeverityBadge?.Invalidate();
