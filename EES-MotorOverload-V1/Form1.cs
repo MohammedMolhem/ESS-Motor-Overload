@@ -57,9 +57,8 @@ namespace EES_MotorOverload_V1
         // Report tab USB actions
         private Button btnReportFullReport, btnReportGraphData, btnReportPhaseCsv;
 
-        // Settings — USB data export & baseline (main.c)
-        private GroupBox grpUsbExport, grpBaseline;
-        private Button btnUsbHelp;
+        // Settings — baseline (main.c)
+        private GroupBox grpBaseline;
 
         private MyChartClass _xyChart1;
         private MyChartClass _xyChart2;
@@ -1809,37 +1808,6 @@ namespace EES_MotorOverload_V1
 
             y += 118;
 
-            grpUsbExport = new GroupBox
-            {
-                Text = "H750 USB Data Export (main.c)",
-                Location = new Point(10, y),
-                Size = new Size(940, 52),
-                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold)
-            };
-            int ux = 12;
-            Button btnSetFullReport = SettingsMakeActionButton("Full Report", ux, 22, 110, Color.FromArgb(41, 128, 185));
-            btnSetFullReport.Click += async (s, e) => await RunUsbFullReportAsync();
-            ux += 118;
-            Button btnSetGraph = SettingsMakeActionButton("Graph Data", ux, 22, 100, Color.FromArgb(52, 73, 94));
-            btnSetGraph.Click += async (s, e) => await RunUsbGraphDataAsync();
-            ux += 108;
-            Button btnSetPhase = SettingsMakeActionButton("Phase CSV", ux, 22, 100, Color.FromArgb(52, 73, 94));
-            btnSetPhase.Click += async (s, e) => await RunUsbPhaseCsvAsync();
-            ux += 108;
-            btnUsbHelp = SettingsMakeActionButton("HELP", ux, 22, 70, Color.FromArgb(52, 73, 94));
-            btnUsbHelp.Click += async (s, e) =>
-            {
-                if (!EnsureUsbConnected()) return;
-                string h = await _comm.RequestHelp();
-                LogUI(string.IsNullOrEmpty(h) ? "HELP: no response" : "HELP:\r\n" + h, Color.Cyan);
-            };
-            grpUsbExport.Controls.Add(btnSetFullReport);
-            grpUsbExport.Controls.Add(btnSetGraph);
-            grpUsbExport.Controls.Add(btnSetPhase);
-            grpUsbExport.Controls.Add(btnUsbHelp);
-            tabSettings.Controls.Add(grpUsbExport);
-            y += 58;
-
             grpBaseline = new GroupBox
             {
                 Text = "Bearing / Stator Baseline (main.c)",
@@ -1920,8 +1888,7 @@ namespace EES_MotorOverload_V1
                 chkUseTextProtocol,
                 btnReportFullReport, btnReportGraphData, btnReportPhaseCsv,
                 btnFullReport, btnGraphData, btnPhaseCsv,
-                btnTechSk, btnTechWavelet,
-                btnUsbHelp
+                btnTechSk, btnTechWavelet
             };
 
             SetAllParamControlsEnabled(false);
@@ -2011,11 +1978,6 @@ namespace EES_MotorOverload_V1
                 }
             }
 
-            if (grpUsbExport != null)
-            {
-                foreach (Control c in grpUsbExport.Controls)
-                    c.Enabled = enabled;
-            }
             if (grpBaseline != null)
             {
                 foreach (Control c in grpBaseline.Controls)
