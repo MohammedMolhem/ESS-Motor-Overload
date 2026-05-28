@@ -1762,52 +1762,52 @@ namespace EES_MotorOverload_V1
             grpMonitor = new GroupBox
             {
                 Text = "Live Monitor",
-                Location = new Point(10, y),
-                Size = new Size(940, 108),
+                Location = new Point(330, y),
+                Size = new Size(620, 93),
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(255, 0, 0)
             };
             tabSettings.Controls.Add(grpMonitor);
 
-            SettingsMakeLabel("Temperature (°C):", 10, 30, grpMonitor);
-            txtSettingsTemperature = SettingsMakeTextBox(132, 28, 90, "--", grpMonitor);
+            SettingsMakeLabel("Temp (°C):", 10, 28, grpMonitor);
+            txtSettingsTemperature = SettingsMakeTextBox(90, 26, 55, "--", grpMonitor);
             txtSettingsTemperature.ReadOnly = true;
 
-            SettingsMakeLabel("Stator fault:", 245, 30, grpMonitor);
+            SettingsMakeLabel("Stator fault:", 155, 28, grpMonitor);
             barSettingsStatorShort = new MyBar
             {
-                Location = new Point(330, 28),
-                Size = new Size(260, 24),
+                Location = new Point(250, 26),
+                Size = new Size(140, 22),
                 Minimum = 0,
                 Maximum = 100,
                 Value = 0
             };
             grpMonitor.Controls.Add(barSettingsStatorShort);
 
-            txtSettingsStatorShort = SettingsMakeTextBox(600, 28, 72, "0%", grpMonitor);
+            txtSettingsStatorShort = SettingsMakeTextBox(395, 26, 45, "0%", grpMonitor);
             txtSettingsStatorShort.ReadOnly = true;
 
-            SettingsMakeLabel("Ground level:", 245, 66, grpMonitor);
+            SettingsMakeLabel("Ground level:", 155, 60, grpMonitor);
             barSettingsStatorGround = new MyBar
             {
-                Location = new Point(330, 64),
-                Size = new Size(260, 24),
+                Location = new Point(250, 58),
+                Size = new Size(140, 22),
                 Minimum = 0,
                 Maximum = 100,
                 Value = 0
             };
             grpMonitor.Controls.Add(barSettingsStatorGround);
 
-            txtSettingsStatorGround = SettingsMakeTextBox(600, 64, 72, "0%", grpMonitor);
+            txtSettingsStatorGround = SettingsMakeTextBox(395, 58, 45, "0%", grpMonitor);
             txtSettingsStatorGround.ReadOnly = true;
 
-            _settingsMonitorLabels["SHORT"] = AddKeyValueMetric(grpMonitor, "Short LV:", 690, 770, 30, 70);
-            _settingsMonitorLabels["GROUND"] = AddKeyValueMetric(grpMonitor, "Gnd LV:", 690, 770, 52, 70);
-            _settingsMonitorLabels["NSR"] = AddKeyValueMetric(grpMonitor, "NSR:", 690, 770, 74, 70);
-            _settingsMonitorLabels["ZSR"] = AddKeyValueMetric(grpMonitor, "ZSR:", 835, 890, 30, 50);
-            _settingsMonitorLabels["TEMP"] = AddKeyValueMetric(grpMonitor, "Temp:", 835, 890, 52, 50);
+            _settingsMonitorLabels["SHORT"] = AddKeyValueMetric(grpMonitor, "Short:", 450, 500, 28, 50);
+            _settingsMonitorLabels["GROUND"] = AddKeyValueMetric(grpMonitor, "Gnd:", 450, 490, 60, 50);
+            _settingsMonitorLabels["NSR"] = AddKeyValueMetric(grpMonitor, "NSR:", 10, 45, 60, 50);
+            _settingsMonitorLabels["ZSR"] = AddKeyValueMetric(grpMonitor, "ZSR:", 550, 585, 28, 30);
+            _settingsMonitorLabels["TEMP"] = AddKeyValueMetric(grpMonitor, "Temp:", 550, 585, 60, 30);
 
-            y += 118;
+            y += 100;
 
             grpUsbExport = new GroupBox
             {
