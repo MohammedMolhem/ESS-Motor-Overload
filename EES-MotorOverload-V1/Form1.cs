@@ -2128,12 +2128,15 @@ namespace EES_MotorOverload_V1
                 if (lblFinalReportStatus != null)
                 {
                     lblFinalReportStatus.Text =
-                        "Final report (STM32): waiting — REPORT/FULLREPORT ends ### END_FULL_REPORT; techniques ### END_EXPORT.";
-                    lblFinalReportStatus.ForeColor = Color.FromArgb(100, 100, 100);
+                        "Final report (STM32): connected — requesting report automatically…";
+                    lblFinalReportStatus.ForeColor = Color.DarkGoldenrod;
                 }
                 ResetTelemetryDisplays();
                 UpdateAlarmMonitorDashboard(null);
                 ApplyFrequencyLeds(3, true);
+
+                // Auto-request full report after connecting
+                _ = RunUsbFullReportAsync();
             }
             else
             {
@@ -2641,123 +2644,155 @@ namespace EES_MotorOverload_V1
         {
             if (rtbTechniqueReport == null) return;
 
-            StringBuilder sb = new StringBuilder(4096);
-            sb.AppendLine("REPORT PAGE — TECHNIQUE RESULTS");
-            sb.AppendLine("Timestamp: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-            sb.AppendLine("Connection: " + ((_comm != null && _comm.IsConnected) ? "CONNECTED" : "DISCONNECTED"));
-            sb.AppendLine(new string('-', 72));
+            rtbTechniqueReport.Clear();
+            Font headerFont = new Font("Segoe UI", 12F, FontStyle.Bold);
+            Font sectionFont = new Font("Segoe UI", 10F, FontStyle.Bold);
+            Font normalFont = new Font("Consolas", 9.5F);
+            Font labelFont = new Font("Consolas", 9.5F, FontStyle.Bold);
+
+            bool isConnected = _comm != null && _comm.IsConnected;
+
+            // ── Title ──
+            AppendRtf(rtbTechniqueReport, "═══════════════════════════════════════════════════════════════\n", Color.FromArgb(41, 128, 185), normalFont);
+            AppendRtf(rtbTechniqueReport, "  MOTOR OVERLOAD REPORT\n", Color.FromArgb(41, 128, 185), headerFont);
+            AppendRtf(rtbTechniqueReport, "═══════════════════════════════════════════════════════════════\n", Color.FromArgb(41, 128, 185), normalFont);
+            AppendRtf(rtbTechniqueReport, "  Timestamp   : ", Color.Gray, labelFont);
+            AppendRtf(rtbTechniqueReport, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n", Color.Black, normalFont);
+            AppendRtf(rtbTechniqueReport, "  Connection  : ", Color.Gray, labelFont);
+            AppendRtf(rtbTechniqueReport, (isConnected ? "CONNECTED" : "DISCONNECTED") + "\n\n",
+                      isConnected ? Color.Green : Color.Red, labelFont);
+
+            // ── Section 1: Telemetry Summary ──
+            AppendRtf(rtbTechniqueReport, "───────────────────────────────────────────────────────────────\n", Color.FromArgb(100, 100, 100), normalFont);
+            AppendRtf(rtbTechniqueReport, "  1. TELEMETRY SUMMARY\n", Color.FromArgb(41, 128, 185), sectionFont);
+            AppendRtf(rtbTechniqueReport, "───────────────────────────────────────────────────────────────\n", Color.FromArgb(100, 100, 100), normalFont);
 
             if (_lastTelemetryForReport != null)
             {
                 TelemetryData t = _lastTelemetryForReport;
-                sb.AppendLine("TELEMETRY SUMMARY");
-                sb.AppendLine("  Bearing level: " + t.FaultLevelString +
-                    " | FI=" + t.FaultIndex.ToString("F4") +
-                    " EMA=" + t.FaultIndex_Ema.ToString("F4") +
-                    " CUSUM=" + t.CusumScore.ToString("F2"));
-                sb.AppendLine("  Dominant: " + DominantFaultToText(t.DominantFault) +
-                    " | BPFO=" + t.BPFO_Hz.ToString("F2") +
-                    " BPFI=" + t.BPFI_Hz.ToString("F2") +
-                    " BSF=" + t.BSF_Hz.ToString("F2") +
-                    " FTF=" + t.FTF_Hz.ToString("F2"));
-                sb.AppendLine("  Stator: short L" + t.Stator_ShortLevel +
-                    " / gnd L" + t.Stator_GndLevel +
-                    " | NSR=" + t.Stator_NSR.ToString("F4") +
-                    " ZSR=" + t.Stator_ZSR.ToString("F4") +
-                    " HARM=" + t.Stator_HarmRatio.ToString("F4") +
-                    " IMB=" + t.Stator_Imbalance.ToString("F1") + "%");
-                sb.AppendLine("  Temp: " + FormatTemperature(t));
 
-                sb.AppendLine();
-                sb.AppendLine("LIVE TELEMETRY (MOVED FROM CONTROLLER PAGE)");
-                sb.AppendLine("  +----------------+-------------------------+");
-                sb.AppendLine("  | Metric         | Value                   |");
-                sb.AppendLine("  +----------------+-------------------------+");
-                AppendReportRow(sb, "BPFO_HZ", t.BPFO_Hz.ToString("F2"));
-                AppendReportRow(sb, "BPFI_HZ", t.BPFI_Hz.ToString("F2"));
-                AppendReportRow(sb, "BSF_HZ", t.BSF_Hz.ToString("F2"));
-                AppendReportRow(sb, "FTF_HZ", t.FTF_Hz.ToString("F2"));
-                AppendReportRow(sb, "FI", t.FaultIndex.ToString("F4"));
-                AppendReportRow(sb, "LV", t.FaultLevelString);
-                AppendReportRow(sb, "LS", t.Index_LS.ToString("F4"));
-                AppendReportRow(sb, "MI", t.Index_Music.ToString("F4"));
-                AppendReportRow(sb, "ES", t.Index_Esprit.ToString("F4"));
-                AppendReportRow(sb, "TK", t.Index_Teager.ToString("F4"));
-                AppendReportRow(sb, "SK", t.Index_SK.ToString("F4"));
-                AppendReportRow(sb, "WV", t.Index_Wavelet.ToString("F4"));
-                AppendReportRow(sb, "CY", t.Index_Cyclic.ToString("F4"));
-                AppendReportRow(sb, "SB", t.Index_Sideband.ToString("F4"));
-                AppendReportRow(sb, "ACF", t.Index_EnvAcf.ToString("F4"));
-                AppendReportRow(sb, "SKPK", t.SkPeak.ToString("F4") + " @ " + t.SkPeakHz.ToString("F2") + "Hz");
-                AppendReportRow(sb, "KB", t.KurtBandHz.ToString(CultureInfo.InvariantCulture));
-                AppendReportRow(sb, "CUSUM", t.CusumScore.ToString("F2"));
-                AppendReportRow(sb, "EMA", t.FaultIndex_Ema.ToString("F4"));
-                AppendReportRow(sb, "PF_O", t.Index_Bpfo.ToString("F4"));
-                AppendReportRow(sb, "PF_I", t.Index_Bpfi.ToString("F4"));
-                AppendReportRow(sb, "PF_B", t.Index_Bsf.ToString("F4"));
-                AppendReportRow(sb, "PF_T", t.Index_Ftf.ToString("F4"));
-                AppendReportRow(sb, "DOM", DominantFaultToText(t.DominantFault));
-                sb.AppendLine("  +----------------+-------------------------+");
+                AppendRtf(rtbTechniqueReport, "\n  BEARING DIAGNOSTICS\n", Color.FromArgb(52, 73, 94), labelFont);
+                AppendReportLine(rtbTechniqueReport, "    Fault Level", t.FaultLevelString);
+                AppendReportLine(rtbTechniqueReport, "    Fault Index", t.FaultIndex.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    EMA", t.FaultIndex_Ema.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    CUSUM", t.CusumScore.ToString("F2"));
+                AppendReportLine(rtbTechniqueReport, "    Dominant", DominantFaultToText(t.DominantFault));
+
+                AppendRtf(rtbTechniqueReport, "\n  BEARING FREQUENCIES (Hz)\n", Color.FromArgb(52, 73, 94), labelFont);
+                AppendReportLine(rtbTechniqueReport, "    BPFO", t.BPFO_Hz.ToString("F2"));
+                AppendReportLine(rtbTechniqueReport, "    BPFI", t.BPFI_Hz.ToString("F2"));
+                AppendReportLine(rtbTechniqueReport, "    BSF", t.BSF_Hz.ToString("F2"));
+                AppendReportLine(rtbTechniqueReport, "    FTF", t.FTF_Hz.ToString("F2"));
+
+                AppendRtf(rtbTechniqueReport, "\n  STATOR DIAGNOSTICS\n", Color.FromArgb(52, 73, 94), labelFont);
+                AppendReportLine(rtbTechniqueReport, "    Short Level", "L" + t.Stator_ShortLevel);
+                AppendReportLine(rtbTechniqueReport, "    Ground Level", "L" + t.Stator_GndLevel);
+                AppendReportLine(rtbTechniqueReport, "    NSR", t.Stator_NSR.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    ZSR", t.Stator_ZSR.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    Harmonic Ratio", t.Stator_HarmRatio.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    Imbalance", t.Stator_Imbalance.ToString("F1") + "%");
+                AppendReportLine(rtbTechniqueReport, "    Temperature", FormatTemperature(t));
+
+                AppendRtf(rtbTechniqueReport, "\n  TECHNIQUE INDICES\n", Color.FromArgb(52, 73, 94), labelFont);
+                AppendReportLine(rtbTechniqueReport, "    LS", t.Index_LS.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    MUSIC", t.Index_Music.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    ESPRIT", t.Index_Esprit.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    Teager-Kaiser", t.Index_Teager.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    SK", t.Index_SK.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    Wavelet", t.Index_Wavelet.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    Cyclic", t.Index_Cyclic.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    Sideband", t.Index_Sideband.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    Env-ACF", t.Index_EnvAcf.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    SK Peak", t.SkPeak.ToString("F4") + " @ " + t.SkPeakHz.ToString("F2") + " Hz");
+                AppendReportLine(rtbTechniqueReport, "    Kurt Band", t.KurtBandHz.ToString(CultureInfo.InvariantCulture));
+
+                AppendRtf(rtbTechniqueReport, "\n  PER-FAULT INDICES\n", Color.FromArgb(52, 73, 94), labelFont);
+                AppendReportLine(rtbTechniqueReport, "    PF_Outer", t.Index_Bpfo.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    PF_Inner", t.Index_Bpfi.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    PF_Ball", t.Index_Bsf.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    PF_Cage", t.Index_Ftf.ToString("F4"));
             }
             else
             {
-                sb.AppendLine("TELEMETRY SUMMARY");
-                sb.AppendLine("  No telemetry received yet.");
+                AppendRtf(rtbTechniqueReport, "  No telemetry received yet.\n", Color.Gray, normalFont);
             }
 
+            // ── Section 2: Controller Parameters ──
             if (_lastFrame != null && _lastFrame.ReportMotorParams != null)
             {
                 MotorParameters mp = _lastFrame.ReportMotorParams;
-                sb.AppendLine();
-                sb.AppendLine("CONTROLLER [PARAMS] (from last full report)");
-                sb.AppendLine("  +----------------+-------------------------+");
-                sb.AppendLine("  | Metric         | Value                   |");
-                sb.AppendLine("  +----------------+-------------------------+");
-                AppendReportRow(sb, "RPM", mp.MotorRPM.ToString("F1"));
-                AppendReportRow(sb, "SLIP", mp.Slip.ToString("F4"));
-                AppendReportRow(sb, "BPFO", mp.BPFO.ToString("F4"));
-                AppendReportRow(sb, "BPFI", mp.BPFI.ToString("F4"));
-                AppendReportRow(sb, "BSF", mp.BSF.ToString("F4"));
-                AppendReportRow(sb, "FTF", mp.FTF.ToString("F4"));
-                AppendReportRow(sb, "LINE_HZ", mp.SupplyLineHz.ToString("F2"));
-                sb.AppendLine("  +----------------+-------------------------+");
+                AppendRtf(rtbTechniqueReport, "\n───────────────────────────────────────────────────────────────\n", Color.FromArgb(100, 100, 100), normalFont);
+                AppendRtf(rtbTechniqueReport, "  2. CONTROLLER PARAMETERS\n", Color.FromArgb(39, 174, 96), sectionFont);
+                AppendRtf(rtbTechniqueReport, "───────────────────────────────────────────────────────────────\n", Color.FromArgb(100, 100, 100), normalFont);
+                AppendReportLine(rtbTechniqueReport, "    Motor RPM", mp.MotorRPM.ToString("F1"));
+                AppendReportLine(rtbTechniqueReport, "    Slip", mp.Slip.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    BPFO", mp.BPFO.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    BPFI", mp.BPFI.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    BSF", mp.BSF.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    FTF", mp.FTF.ToString("F4"));
+                AppendReportLine(rtbTechniqueReport, "    Line Freq", mp.SupplyLineHz.ToString("F2") + " Hz");
             }
 
-            sb.AppendLine();
-            sb.AppendLine("SPECTRAL TECHNIQUE RESULTS");
+            // ── Section 3: Spectral Technique Results ──
+            AppendRtf(rtbTechniqueReport, "\n───────────────────────────────────────────────────────────────\n", Color.FromArgb(100, 100, 100), normalFont);
+            int sectionNum = (_lastFrame != null && _lastFrame.ReportMotorParams != null) ? 3 : 2;
+            AppendRtf(rtbTechniqueReport, "  " + sectionNum + ". SPECTRAL TECHNIQUE RESULTS\n", Color.FromArgb(192, 57, 43), sectionFont);
+            AppendRtf(rtbTechniqueReport, "───────────────────────────────────────────────────────────────\n", Color.FromArgb(100, 100, 100), normalFont);
+
             if (_lastFrame == null)
             {
-                sb.AppendLine("  No spectral frame available.");
+                AppendRtf(rtbTechniqueReport, "  No spectral frame available.\n", Color.Gray, normalFont);
             }
             else
             {
-                sb.AppendLine("  +----------------+-------------------------+");
-                sb.AppendLine("  | Metric         | Value                   |");
-                sb.AppendLine("  +----------------+-------------------------+");
-                AppendReportRow(sb, "Mode", string.IsNullOrEmpty(_lastFrame.Mode) ? "n/a" : _lastFrame.Mode);
-                AppendReportRow(sb, "End marker", string.IsNullOrEmpty(_lastFrame.FinalReportSummary) ? "n/a" : _lastFrame.FinalReportSummary);
-                AppendReportRow(sb, "FOURIER", "Mean=" + _lastFrame.FourierPoints.Count +
-                    " P1=" + _lastFrame.FourierPhase1Points.Count +
-                    " P2=" + _lastFrame.FourierPhase2Points.Count +
-                    " P3=" + _lastFrame.FourierPhase3Points.Count);
-                AppendReportRow(sb, "MUSIC", "Mean=" + _lastFrame.MusicPoints.Count +
-                    " P1=" + _lastFrame.MusicPhase1Points.Count +
-                    " P2=" + _lastFrame.MusicPhase2Points.Count +
-                    " P3=" + _lastFrame.MusicPhase3Points.Count);
-                AppendReportRow(sb, "CYCLIC2", "Mean=" + _lastFrame.Cyclic2Points.Count +
-                    " P1=" + _lastFrame.Cyclic2Phase1Points.Count +
-                    " P2=" + _lastFrame.Cyclic2Phase2Points.Count +
-                    " P3=" + _lastFrame.Cyclic2Phase3Points.Count);
-                AppendReportRow(sb, "ESPRIT", "Peaks=" + _lastFrame.EspritFrequencies.Count);
-                AppendReportRow(sb, "SK", "Points=" + _lastFrame.SkPoints.Count);
-                AppendReportRow(sb, "WAVELET", "Points=" + _lastFrame.WaveletPoints.Count);
-                sb.AppendLine("  +----------------+-------------------------+");
+                AppendReportLine(rtbTechniqueReport, "    Mode", string.IsNullOrEmpty(_lastFrame.Mode) ? "n/a" : _lastFrame.Mode);
+                AppendReportLine(rtbTechniqueReport, "    End Marker", string.IsNullOrEmpty(_lastFrame.FinalReportSummary) ? "n/a" : _lastFrame.FinalReportSummary);
+                AppendRtf(rtbTechniqueReport, "\n", Color.Black, normalFont);
+                AppendReportLine(rtbTechniqueReport, "    FOURIER",
+                    "Mean=" + _lastFrame.FourierPoints.Count.ToString().PadLeft(5) +
+                    "  P1=" + _lastFrame.FourierPhase1Points.Count.ToString().PadLeft(5) +
+                    "  P2=" + _lastFrame.FourierPhase2Points.Count.ToString().PadLeft(5) +
+                    "  P3=" + _lastFrame.FourierPhase3Points.Count.ToString().PadLeft(5));
+                AppendReportLine(rtbTechniqueReport, "    MUSIC",
+                    "Mean=" + _lastFrame.MusicPoints.Count.ToString().PadLeft(5) +
+                    "  P1=" + _lastFrame.MusicPhase1Points.Count.ToString().PadLeft(5) +
+                    "  P2=" + _lastFrame.MusicPhase2Points.Count.ToString().PadLeft(5) +
+                    "  P3=" + _lastFrame.MusicPhase3Points.Count.ToString().PadLeft(5));
+                AppendReportLine(rtbTechniqueReport, "    CYCLIC2",
+                    "Mean=" + _lastFrame.Cyclic2Points.Count.ToString().PadLeft(5) +
+                    "  P1=" + _lastFrame.Cyclic2Phase1Points.Count.ToString().PadLeft(5) +
+                    "  P2=" + _lastFrame.Cyclic2Phase2Points.Count.ToString().PadLeft(5) +
+                    "  P3=" + _lastFrame.Cyclic2Phase3Points.Count.ToString().PadLeft(5));
+                AppendReportLine(rtbTechniqueReport, "    ESPRIT", "Peaks=" + _lastFrame.EspritFrequencies.Count);
+                AppendReportLine(rtbTechniqueReport, "    SK", "Points=" + _lastFrame.SkPoints.Count);
+                AppendReportLine(rtbTechniqueReport, "    WAVELET", "Points=" + _lastFrame.WaveletPoints.Count);
             }
 
-            sb.AppendLine();
-            AppendUsbCommandReference(sb);
+            AppendRtf(rtbTechniqueReport, "\n═══════════════════════════════════════════════════════════════\n", Color.FromArgb(41, 128, 185), normalFont);
 
-            rtbTechniqueReport.Text = sb.ToString();
+            rtbTechniqueReport.SelectionStart = 0;
+            rtbTechniqueReport.ScrollToCaret();
+        }
+
+        /// <summary>Appends colored/styled text to a RichTextBox.</summary>
+        private static void AppendRtf(RichTextBox rtb, string text, Color color, Font font)
+        {
+            int start = rtb.TextLength;
+            rtb.AppendText(text);
+            rtb.Select(start, text.Length);
+            rtb.SelectionColor = color;
+            rtb.SelectionFont = font;
+            rtb.SelectionLength = 0;
+        }
+
+        /// <summary>Appends a formatted label-value line to the report (aligned columns).</summary>
+        private void AppendReportLine(RichTextBox rtb, string label, string value)
+        {
+            Font labelFont = new Font("Consolas", 9.5F, FontStyle.Bold);
+            Font valueFont = new Font("Consolas", 9.5F);
+            string paddedLabel = (label ?? "").PadRight(22);
+            AppendRtf(rtb, paddedLabel, Color.FromArgb(60, 60, 60), labelFont);
+            AppendRtf(rtb, ": " + (value ?? "") + "\n", Color.FromArgb(35, 35, 35), valueFont);
         }
 
         /// <summary>USB text/binary commands from H750 main.c HELP (USB_Process_TextLine).</summary>
