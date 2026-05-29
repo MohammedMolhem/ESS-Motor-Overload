@@ -52,7 +52,6 @@ namespace EES_MotorOverload_V1
         // Technique selection buttons
         private Button btnTechFourier, btnTechMusic, btnTechEsprit, btnTechCyclo;
         private Button btnTechSk, btnTechWavelet;
-        private Button btnFullReport, btnGraphData, btnPhaseCsv;
 
         // Report tab USB actions
         private Button btnReportFullReport, btnReportGraphData, btnReportPhaseCsv;
@@ -694,7 +693,7 @@ namespace EES_MotorOverload_V1
             btnTechSk = new Button
             {
                 Text = "SK",
-                Location = new Point(290, 58),
+                Location = new Point(612, 25),
                 Size = new Size(78, 35),
                 Font = new Font("Tahoma", 9F, FontStyle.Bold),
                 BackColor = Color.FromArgb(52, 73, 94),
@@ -706,7 +705,7 @@ namespace EES_MotorOverload_V1
             btnTechWavelet = new Button
             {
                 Text = "Wavelet",
-                Location = new Point(373, 58),
+                Location = new Point(695, 25),
                 Size = new Size(78, 35),
                 Font = new Font("Tahoma", 9F, FontStyle.Bold),
                 BackColor = Color.FromArgb(52, 73, 94),
@@ -715,55 +714,18 @@ namespace EES_MotorOverload_V1
             };
             btnTechWavelet.Click += async (s, e) => await SelectTechnique(SpectralTechnique.Wavelet);
 
-            btnFullReport = new Button
-            {
-                Text = "Full Report",
-                Location = new Point(280, 25),
-                Size = new Size(95, 35),
-                Font = new Font("Tahoma", 9F, FontStyle.Bold),
-                BackColor = Color.FromArgb(142, 68, 173),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
-            };
-            btnFullReport.Click += async (s, e) => await RunUsbFullReportAsync();
-
-            btnGraphData = new Button
-            {
-                Text = "GraphData",
-                Location = new Point(380, 25),
-                Size = new Size(90, 35),
-                Font = new Font("Tahoma", 9F, FontStyle.Bold),
-                BackColor = Color.FromArgb(52, 73, 94),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
-            };
-            btnGraphData.Click += async (s, e) => await RunUsbGraphDataAsync();
-
-            btnPhaseCsv = new Button
-            {
-                Text = "Phase CSV",
-                Location = new Point(475, 25),
-                Size = new Size(90, 35),
-                Font = new Font("Tahoma", 9F, FontStyle.Bold),
-                BackColor = Color.FromArgb(52, 73, 94),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
-            };
-            btnPhaseCsv.Click += async (s, e) => await RunUsbPhaseCsvAsync();
-
-            // Row 2: techniques (y=58); row 1: transport + Full Report / GraphData / Phase CSV
-            btnTechFourier.Location = new Point(10, 58);
+            // All buttons on same row (y=25): Clear, Stop, Continue, then techniques
+            btnTechFourier.Location = new Point(280, 25);
             btnTechFourier.Size = new Size(78, 35);
-            btnTechMusic.Location = new Point(93, 58);
+            btnTechMusic.Location = new Point(363, 25);
             btnTechMusic.Size = new Size(78, 35);
-            btnTechEsprit.Location = new Point(176, 58);
+            btnTechEsprit.Location = new Point(446, 25);
             btnTechEsprit.Size = new Size(78, 35);
-            btnTechCyclo.Location = new Point(259, 58);
+            btnTechCyclo.Location = new Point(529, 25);
             btnTechCyclo.Size = new Size(78, 35);
 
             grpHarmonicControl.Controls.AddRange(new Control[] {
                 btnChartClear, btnChartStop, btnChartContinue,
-                btnFullReport, btnGraphData, btnPhaseCsv,
                 btnTechFourier, btnTechMusic, btnTechEsprit, btnTechCyclo,
                 btnTechSk, btnTechWavelet });
             tabHarmonics.Controls.Add(grpHarmonicControl);
@@ -895,9 +857,6 @@ namespace EES_MotorOverload_V1
             if (btnTechCyclo != null) btnTechCyclo.Enabled = enabled;
             if (btnTechSk != null) btnTechSk.Enabled = enabled;
             if (btnTechWavelet != null) btnTechWavelet.Enabled = enabled;
-            if (btnFullReport != null) btnFullReport.Enabled = enabled;
-            if (btnGraphData != null) btnGraphData.Enabled = enabled;
-            if (btnPhaseCsv != null) btnPhaseCsv.Enabled = enabled;
             if (btnReportFullReport != null) btnReportFullReport.Enabled = enabled;
             if (btnReportGraphData != null) btnReportGraphData.Enabled = enabled;
             if (btnReportPhaseCsv != null) btnReportPhaseCsv.Enabled = enabled;
@@ -1988,7 +1947,6 @@ namespace EES_MotorOverload_V1
                 txtTerminalCmd, btnTerminalSend,
                 chkUseTextProtocol,
                 btnReportFullReport, btnReportGraphData, btnReportPhaseCsv,
-                btnFullReport, btnGraphData, btnPhaseCsv,
                 btnTechSk, btnTechWavelet
             };
 
