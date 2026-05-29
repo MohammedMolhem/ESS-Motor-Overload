@@ -21,8 +21,17 @@ namespace EES_MotorOverload_V1
         public List<PointF> Cyclic2Phase2Points = new List<PointF>();
         public List<PointF> Cyclic2Phase3Points = new List<PointF>();
         public List<PointF> WaveletPoints = new List<PointF>();
+        public List<PointF> WaveletPhase1Points = new List<PointF>();
+        public List<PointF> WaveletPhase2Points = new List<PointF>();
+        public List<PointF> WaveletPhase3Points = new List<PointF>();
         public List<PointF> SkPoints = new List<PointF>();
+        public List<PointF> SkPhase1Points = new List<PointF>();
+        public List<PointF> SkPhase2Points = new List<PointF>();
+        public List<PointF> SkPhase3Points = new List<PointF>();
         public List<float> EspritFrequencies = new List<float>();
+        public List<float> EspritPhase1Frequencies = new List<float>();
+        public List<float> EspritPhase2Frequencies = new List<float>();
+        public List<float> EspritPhase3Frequencies = new List<float>();
         public bool IsComplete = false;
         public string Mode { get; set; }
         public TelemetryData ReportTelemetry { get; set; } = new TelemetryData();
@@ -287,6 +296,26 @@ namespace EES_MotorOverload_V1
                 ParseCsvPairs(line, prefix, GetPhaseTarget("CYCLIC2", phase));
                 return true;
             }
+            if (tag.Contains("SK") || tag.Contains("KURTOSIS"))
+            {
+                ParseCsvPairs(line, prefix, GetPhaseTarget("SK", phase));
+                return true;
+            }
+            if (tag.Contains("WAVELET"))
+            {
+                List<PointF> wavTarget = GetPhaseTarget("WAVELET", phase);
+                // Try key=value format (F_HZ=... EMEAN=...) first, then CSV pairs
+                if (line.Contains("F_HZ=") && line.Contains("EMEAN="))
+                    ParseWaveletLine(line, wavTarget);
+                else
+                    ParseCsvPairs(line, prefix, wavTarget);
+                return true;
+            }
+            if (tag.Contains("ESPRIT"))
+            {
+                ParseEspritPhaseFromTag(line, prefix, phase);
+                return true;
+            }
 
             return false;
         }
@@ -304,6 +333,18 @@ namespace EES_MotorOverload_V1
                 if (phase == 1) return _current.MusicPhase1Points;
                 if (phase == 2) return _current.MusicPhase2Points;
                 return _current.MusicPhase3Points;
+            }
+            if (technique == "SK")
+            {
+                if (phase == 1) return _current.SkPhase1Points;
+                if (phase == 2) return _current.SkPhase2Points;
+                return _current.SkPhase3Points;
+            }
+            if (technique == "WAVELET")
+            {
+                if (phase == 1) return _current.WaveletPhase1Points;
+                if (phase == 2) return _current.WaveletPhase2Points;
+                return _current.WaveletPhase3Points;
             }
 
             if (phase == 1) return _current.Cyclic2Phase1Points;
@@ -520,6 +561,69 @@ namespace EES_MotorOverload_V1
                 {
                     if (!target.Contains(f))
                         target.Add(f);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Parses per-phase ESPRIT frequency data from a tagged line.
+        /// Expected format: [ESPRIT_P1_CSV] 0,123.456;1,234.567 or [ESPRIT_PHASE1_HZ] 123.456 234.567
+        /// </summary>
+        private void ParseEspritPhaseFromTag(string line, string prefix, int phase)
+        {
+            List<float> target;
+            if (phase == 1) target = _current.EspritPhase1Frequencies;
+            else if (phase == 2) target = _current.EspritPhase2Frequencies;
+            else target = _current.EspritPhase3Frequencies;
+
+            string data = line.Substring(prefix.Length).Trim();
+            if (string.IsNullOrEmpty(data)) return;
+
+            // Try CSV pair format first: "0,123.456;1,234.567"
+            if (data.Contains(";") || data.Contains(","))
+            {
+                string[] parts = data.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    string part = parts[i].Trim();
+                    if (part.Contains("=") && !part.Contains(",")) continue;
+
+                    int comma = part.IndexOf(',');
+                    if (comma > 0 && comma < part.Length - 1)
+                    {
+                        string freqStr = part.Substring(comma + 1);
+                        float f;
+                        if (TryParseFloat(freqStr, out f) && f > 0f)
+                        {
+                            if (!target.Contains(f))
+                                target.Add(f);
+                        }
+                    }
+                    else
+                    {
+                        float f;
+                        if (TryParseFloat(part, out f) && f > 0f)
+                        {
+                            if (!target.Contains(f))
+                                target.Add(f);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Space/tab-separated frequencies
+                string[] tokens = data.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < tokens.Length; i++)
+                {
+                    string tok = tokens[i].Trim();
+                    if (tok.StartsWith("N=", StringComparison.OrdinalIgnoreCase)) continue;
+                    float f;
+                    if (TryParseFloat(tok, out f) && f > 0f)
+                    {
+                        if (!target.Contains(f))
+                            target.Add(f);
+                    }
                 }
             }
         }

@@ -945,7 +945,8 @@ namespace EES_MotorOverload_V1
                     techName = "MUSIC Engineering Spectrum";
                     break;
                 case SpectralTechnique.Esprit:
-                    DisplayEspritOnCharts(_lastFrame.EspritFrequencies);
+                    techName = "ESPRIT Engineering Spectrum";
+                    DisplayEspritThreePhaseOnCharts();
                     return;
                 case SpectralTechnique.Cyclostationary:
                     techName = "Cyclostationary Engineering Spectrum";
@@ -961,25 +962,6 @@ namespace EES_MotorOverload_V1
             List<PointF> phase1 = GetPointsForPhase(_lastFrame, _currentTechnique, 1);
             List<PointF> phase2 = GetPointsForPhase(_lastFrame, _currentTechnique, 2);
             List<PointF> phase3 = GetPointsForPhase(_lastFrame, _currentTechnique, 3);
-
-            if (_currentTechnique == SpectralTechnique.Sk ||
-                _currentTechnique == SpectralTechnique.Wavelet)
-            {
-                List<PointF> mono = phase1;
-                if (mono == null || mono.Count == 0)
-                {
-                    _xyChart1?.ClearData();
-                    lblPhase1.Text = "Combined Engineering Plot — " + techName + " (no data)";
-                    UpdateSmartEngineeringView();
-                    return;
-                }
-                List<PointF> dbMono = ConvertPointsToDb(mono);
-                _xyChart1?.SetThreePhaseDbData(dbMono, null, null);
-                _xyChart1?.ShowPeakMarkers(dbMono, 8);
-                lblPhase1.Text = "Engineering Plot — " + techName + " (motor-wide spectrum)";
-                UpdateSmartEngineeringView();
-                return;
-            }
 
             bool hasP1 = phase1 != null && phase1.Count > 0;
             bool hasP2 = phase2 != null && phase2.Count > 0;
@@ -1029,14 +1011,14 @@ namespace EES_MotorOverload_V1
                         frame.Cyclic2Points, phaseIndex, true);
 
                 case SpectralTechnique.Sk:
-                    if (frame.SkPoints != null && frame.SkPoints.Count > 0)
-                        return frame.SkPoints;
-                    return null;
+                    return SelectPerPhaseOrFallback(
+                        frame.SkPhase1Points, frame.SkPhase2Points, frame.SkPhase3Points,
+                        frame.SkPoints, phaseIndex, false);
 
                 case SpectralTechnique.Wavelet:
-                    if (frame.WaveletPoints != null && frame.WaveletPoints.Count > 0)
-                        return frame.WaveletPoints;
-                    return null;
+                    return SelectPerPhaseOrFallback(
+                        frame.WaveletPhase1Points, frame.WaveletPhase2Points, frame.WaveletPhase3Points,
+                        frame.WaveletPoints, phaseIndex, false);
 
                 default:
                     return null;
@@ -1265,6 +1247,115 @@ namespace EES_MotorOverload_V1
         }
 
         /// <summary>
+        /// Displays ESPRIT frequency estimates as impulse lines on the three-phase overlay chart.
+        /// Each estimated frequency is shown as a vertical spike from -100 dB to 0 dB.
+        /// When per-phase ESPRIT data is available, each phase is drawn as a separate series.
+        /// </summary>
+        private void DisplayEspritThreePhaseOnCharts()
+        {
+            List<float> p1Freqs = (_lastFrame.EspritPhase1Frequencies != null && _lastFrame.EspritPhase1Frequencies.Count > 0)
+                ? _lastFrame.EspritPhase1Frequencies : null;
+            List<float> p2Freqs = (_lastFrame.EspritPhase2Frequencies != null && _lastFrame.EspritPhase2Frequencies.Count > 0)
+                ? _lastFrame.EspritPhase2Frequencies : null;
+            List<float> p3Freqs = (_lastFrame.EspritPhase3Frequencies != null && _lastFrame.EspritPhase3Frequencies.Count > 0)
+                ? _lastFrame.EspritPhase3Frequencies : null;
+
+            // If no per-phase data, use mono frequencies for all phases
+            List<float> monoFreqs = _lastFrame.EspritFrequencies;
+            if (p1Freqs == null && p2Freqs == null && p3Freqs == null)
+            {
+                if (monoFreqs == null || monoFreqs.Count == 0)
+                {
+                    _xyChart1?.ClearData();
+                    lblPhase1.Text = "Combined Engineering Plot — ESPRIT (no peaks found)";
+                    LogUI("ESPRIT: no frequency estimates in last frame (exp_esprit_n=0)", Color.Orange);
+                    UpdateSmartEngineeringView();
+                    return;
+                }
+                // Use mono data for all three phases as fallback
+                p1Freqs = monoFreqs;
+                p2Freqs = monoFreqs;
+                p3Freqs = monoFreqs;
+            }
+
+            // Determine frequency range
+            float maxFreq = 100f;
+            List<List<float>> allFreqs = new List<List<float>>();
+            if (p1Freqs != null) allFreqs.Add(p1Freqs);
+            if (p2Freqs != null) allFreqs.Add(p2Freqs);
+            if (p3Freqs != null) allFreqs.Add(p3Freqs);
+            for (int j = 0; j < allFreqs.Count; j++)
+                for (int i = 0; i < allFreqs[j].Count; i++)
+                    if (allFreqs[j][i] > maxFreq) maxFreq = allFreqs[j][i];
+            maxFreq *= 1.2f;
+
+            if (_lastFrame.FourierPoints != null && _lastFrame.FourierPoints.Count > 0)
+            {
+                for (int i = 0; i < _lastFrame.FourierPoints.Count; i++)
+                    if (_lastFrame.FourierPoints[i].X > maxFreq)
+                        maxFreq = _lastFrame.FourierPoints[i].X;
+            }
+            if (maxFreq < 100f) maxFreq = 2500f;
+
+            // Build impulse points for each phase
+            List<PointF> dbP1 = ConvertPointsToDb(BuildEspritImpulsePoints(p1Freqs, maxFreq));
+            List<PointF> dbP2 = ConvertPointsToDb(BuildEspritImpulsePoints(p2Freqs, maxFreq));
+            List<PointF> dbP3 = ConvertPointsToDb(BuildEspritImpulsePoints(p3Freqs, maxFreq));
+
+            _xyChart1?.SetThreePhaseDbData(dbP1, dbP2, dbP3);
+            if (dbP1 != null && dbP1.Count > 0)
+                _xyChart1?.ShowPeakMarkers(dbP1, 8);
+            else
+                _xyChart1?.ShowPeakMarkers(new List<PointF>(), 0);
+
+            // Build frequency list string for label
+            List<float> primaryFreqs = p1Freqs ?? p2Freqs ?? p3Freqs;
+            List<float> sorted = new List<float>(primaryFreqs);
+            sorted.Sort();
+            string freqList = "";
+            for (int i = 0; i < sorted.Count && i < 6; i++)
+            {
+                if (i > 0) freqList += ", ";
+                freqList += sorted[i].ToString("F1") + " Hz";
+            }
+            if (sorted.Count > 6) freqList += " ...";
+
+            lblPhase1.Text = "Combined Engineering Plot — ESPRIT (" + sorted.Count + " peaks: " + freqList + ")";
+            LogUI("ESPRIT: displaying " + sorted.Count + " frequency estimates: " + freqList, Color.Cyan);
+            UpdateSmartEngineeringView();
+        }
+
+        /// <summary>
+        /// Builds impulse spike points for a list of ESPRIT frequencies.
+        /// Each frequency becomes a vertical spike from floor (1e-12) to full scale (1.0).
+        /// </summary>
+        private List<PointF> BuildEspritImpulsePoints(List<float> freqs, float maxFreq)
+        {
+            if (freqs == null || freqs.Count == 0) return null;
+
+            List<float> sorted = new List<float>(freqs);
+            sorted.Sort();
+
+            List<PointF> displayPoints = new List<PointF>();
+            displayPoints.Add(new PointF(0f, 1e-12f));
+
+            for (int i = 0; i < sorted.Count; i++)
+            {
+                float f = sorted[i];
+                float fBefore = f - 0.5f;
+                float fAfter = f + 0.5f;
+                if (fBefore < 0f) fBefore = 0f;
+
+                displayPoints.Add(new PointF(fBefore, 1e-12f));
+                displayPoints.Add(new PointF(f, 1.0f));
+                displayPoints.Add(new PointF(fAfter, 1e-12f));
+            }
+
+            displayPoints.Add(new PointF(maxFreq, 1e-12f));
+            return displayPoints;
+        }
+
+        /// <summary>
         /// Displays ESPRIT frequency estimates as impulse lines on all 3 charts.
         /// Each estimated frequency is shown as a vertical spike from -100 dB to 0 dB.
         /// Uses the Fourier spectrum as a background reference so the impulses are
@@ -1474,7 +1565,17 @@ namespace EES_MotorOverload_V1
                             " P2=" + frame.Cyclic2Phase2Points.Count +
                             " P3=" + frame.Cyclic2Phase3Points.Count + ")" +
                             " ESPRIT=" + frame.EspritFrequencies.Count +
+                            " (P1=" + frame.EspritPhase1Frequencies.Count +
+                            " P2=" + frame.EspritPhase2Frequencies.Count +
+                            " P3=" + frame.EspritPhase3Frequencies.Count + ")" +
                             " SK=" + frame.SkPoints.Count +
+                            " (P1=" + frame.SkPhase1Points.Count +
+                            " P2=" + frame.SkPhase2Points.Count +
+                            " P3=" + frame.SkPhase3Points.Count + ")" +
+                            " WAV=" + frame.WaveletPoints.Count +
+                            " (P1=" + frame.WaveletPhase1Points.Count +
+                            " P2=" + frame.WaveletPhase2Points.Count +
+                            " P3=" + frame.WaveletPhase3Points.Count + ")" +
                             " — " + DateTime.Now.ToString("HH:mm:ss");
                         lblFinalReportStatus.ForeColor = Color.ForestGreen;
                     }
