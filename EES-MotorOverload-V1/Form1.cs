@@ -2096,6 +2096,10 @@ namespace EES_MotorOverload_V1
                 ResetTelemetryDisplays();
                 UpdateAlarmMonitorDashboard(null);
                 ApplyFrequencyLeds(3, true);
+
+                // Auto-switch to the Report tab after successful connection
+                if (tabControl1 != null && tabAlarmMonitor != null)
+                    tabControl1.SelectedTab = tabAlarmMonitor;
             }
             else
             {
@@ -2603,120 +2607,254 @@ namespace EES_MotorOverload_V1
         {
             if (rtbTechniqueReport == null) return;
 
-            StringBuilder sb = new StringBuilder(4096);
-            sb.AppendLine("REPORT PAGE — TECHNIQUE RESULTS");
-            sb.AppendLine("Timestamp: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-            sb.AppendLine("Connection: " + ((_comm != null && _comm.IsConnected) ? "CONNECTED" : "DISCONNECTED"));
-            sb.AppendLine(new string('-', 72));
+            bool isConnected = _comm != null && _comm.IsConnected;
+            StringBuilder sb = new StringBuilder(8192);
+
+            // ══════════════════════════════════════════════════════════════════════
+            // HEADER
+            // ══════════════════════════════════════════════════════════════════════
+            sb.AppendLine("╔══════════════════════════════════════════════════════════════════════════╗");
+            sb.AppendLine("║       EES MOTOR OVERLOAD — COMPREHENSIVE DIAGNOSTIC REPORT             ║");
+            sb.AppendLine("╚══════════════════════════════════════════════════════════════════════════╝");
+            sb.AppendLine();
+            sb.AppendLine("  Report Generated : " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine("  Connection Status: " + (isConnected ? "● CONNECTED" : "○ DISCONNECTED"));
+            if (isConnected && cmbPorts != null && cmbPorts.SelectedItem != null)
+                sb.AppendLine("  COM Port         : " + cmbPorts.SelectedItem.ToString());
+            sb.AppendLine();
+
+            // ══════════════════════════════════════════════════════════════════════
+            // SECTION 1: COMMUNICATION PROTOCOL INFORMATION
+            // ══════════════════════════════════════════════════════════════════════
+            sb.AppendLine("┌──────────────────────────────────────────────────────────────────────────┐");
+            sb.AppendLine("│  1. COMMUNICATION PROTOCOL                                              │");
+            sb.AppendLine("├──────────────────────────────────────────────────────────────────────────┤");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("│  Interface     : USB CDC Virtual COM Port (VCP)                          │");
+            sb.AppendLine("│  MCU           : STM32H750 (Cortex-M7, 480 MHz)                         │");
+            sb.AppendLine("│  USB Clock     : 48 MHz (PLL3Q)                                         │");
+            sb.AppendLine("│  Protocol Modes: Text (ASCII line-based) / Binary (framed packets)      │");
+            sb.AppendLine("│  Current Mode  : " + (UseTextProtocol ? "TEXT PROTOCOL" : "BINARY PROTOCOL").PadRight(55) + "│");
+            sb.AppendLine("│  Baud Rate     : Native USB Full-Speed (12 Mbit/s)                      │");
+            sb.AppendLine("│  Data Flow     : Half-duplex command/response + async telemetry          │");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("│  Text Commands : PING, GET, REPORT, FULLREPORT, GRAPHDATA, PHASECSV     │");
+            sb.AppendLine("│                  FFTCSV, MUSICCSV, ESPRITCSV, CYCLIC2CSV, SKCSV,        │");
+            sb.AppendLine("│                  WAVELETCSV, SAVE, LOAD, DEFAULT, SAVEADC               │");
+            sb.AppendLine("│  Binary Cmds   : 0x04-0x0B (set params), 0x80 (get all), 0xFE (ping)   │");
+            sb.AppendLine("│                  0x30-0x32 (flash ops), 0x40 (ADC snapshot)             │");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("│  End Markers   : ### END_FULL_REPORT  (REPORT/FULLREPORT)               │");
+            sb.AppendLine("│                  ### END_EXPORT       (FFTCSV, MUSICCSV, etc.)          │");
+            sb.AppendLine("│                  ### END_GRAPHDATA    (GRAPHDATA/GRAPHS)                 │");
+            sb.AppendLine("│                  ### END_PHASE_CSV    (PHASE3/PHASECSV)                  │");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("└──────────────────────────────────────────────────────────────────────────┘");
+            sb.AppendLine();
+
+            // ══════════════════════════════════════════════════════════════════════
+            // SECTION 2: HARMONICS & SPECTRAL TECHNIQUES
+            // ══════════════════════════════════════════════════════════════════════
+            sb.AppendLine("┌──────────────────────────────────────────────────────────────────────────┐");
+            sb.AppendLine("│  2. HARMONICS & SPECTRAL ANALYSIS TECHNIQUES                            │");
+            sb.AppendLine("├──────────────────────────────────────────────────────────────────────────┤");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("│  ┌─────────────────┬───────────────────────────────────────────────┐    │");
+            sb.AppendLine("│  │ Technique       │ Description                                   │    │");
+            sb.AppendLine("│  ├─────────────────┼───────────────────────────────────────────────┤    │");
+            sb.AppendLine("│  │ FFT (Fourier)   │ Fast Fourier Transform — frequency spectrum   │    │");
+            sb.AppendLine("│  │                 │ decomposition for bearing fault detection.    │    │");
+            sb.AppendLine("│  │                 │ 3-phase analysis (P1, P2, P3 + Mean).        │    │");
+            sb.AppendLine("│  ├─────────────────┼───────────────────────────────────────────────┤    │");
+            sb.AppendLine("│  │ MUSIC           │ MUltiple SIgnal Classification — sub-space    │    │");
+            sb.AppendLine("│  │                 │ method for high-resolution frequency est.     │    │");
+            sb.AppendLine("│  │                 │ Resolves closely spaced spectral peaks.       │    │");
+            sb.AppendLine("│  ├─────────────────┼───────────────────────────────────────────────┤    │");
+            sb.AppendLine("│  │ ESPRIT          │ Estimation of Signal Parameters via Rotational│    │");
+            sb.AppendLine("│  │                 │ Invariance — parametric frequency estimation. │    │");
+            sb.AppendLine("│  │                 │ Extracts dominant harmonic frequencies.       │    │");
+            sb.AppendLine("│  ├─────────────────┼───────────────────────────────────────────────┤    │");
+            sb.AppendLine("│  │ Cyclostationary  │ Second-order cyclostationary analysis —      │    │");
+            sb.AppendLine("│  │                 │ detects periodic modulation patterns in       │    │");
+            sb.AppendLine("│  │                 │ bearing defect signals. 3-phase support.      │    │");
+            sb.AppendLine("│  ├─────────────────┼───────────────────────────────────────────────┤    │");
+            sb.AppendLine("│  │ Spectral Kurtosis│ SK — identifies non-Gaussian transients     │    │");
+            sb.AppendLine("│  │ (SK)            │ in frequency bands; optimal demodulation      │    │");
+            sb.AppendLine("│  │                 │ band selection for envelope analysis.         │    │");
+            sb.AppendLine("│  ├─────────────────┼───────────────────────────────────────────────┤    │");
+            sb.AppendLine("│  │ Wavelet         │ Wavelet decomposition — time-frequency        │    │");
+            sb.AppendLine("│  │                 │ analysis for transient fault detection.       │    │");
+            sb.AppendLine("│  │                 │ Multi-resolution signal representation.       │    │");
+            sb.AppendLine("│  └─────────────────┴───────────────────────────────────────────────┘    │");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("│  Current Technique: " + _currentTechnique.ToString().ToUpperInvariant().PadRight(53) + "│");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("│  Bearing Fault Frequencies:                                              │");
+            sb.AppendLine("│    BPFO — Ball Pass Frequency Outer race (outer ring defect)             │");
+            sb.AppendLine("│    BPFI — Ball Pass Frequency Inner race (inner ring defect)             │");
+            sb.AppendLine("│    BSF  — Ball Spin Frequency (rolling element defect)                   │");
+            sb.AppendLine("│    FTF  — Fundamental Train Frequency (cage defect)                      │");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("│  Stator Winding Analysis:                                                │");
+            sb.AppendLine("│    NSR  — Negative Sequence Ratio (inter-turn short detection)           │");
+            sb.AppendLine("│    ZSR  — Zero Sequence Ratio (ground fault detection)                   │");
+            sb.AppendLine("│    HARM — Harmonic Distortion Ratio (winding degradation)                │");
+            sb.AppendLine("│    IMB  — Current Imbalance (% deviation between phases)                 │");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("└──────────────────────────────────────────────────────────────────────────┘");
+            sb.AppendLine();
+
+            // ══════════════════════════════════════════════════════════════════════
+            // SECTION 3: LIVE TELEMETRY DATA
+            // ══════════════════════════════════════════════════════════════════════
+            sb.AppendLine("┌──────────────────────────────────────────────────────────────────────────┐");
+            sb.AppendLine("│  3. LIVE TELEMETRY DATA                                                 │");
+            sb.AppendLine("├──────────────────────────────────────────────────────────────────────────┤");
 
             if (_lastTelemetryForReport != null)
             {
                 TelemetryData t = _lastTelemetryForReport;
-                sb.AppendLine("TELEMETRY SUMMARY");
-                sb.AppendLine("  Bearing level: " + t.FaultLevelString +
-                    " | FI=" + t.FaultIndex.ToString("F4") +
-                    " EMA=" + t.FaultIndex_Ema.ToString("F4") +
-                    " CUSUM=" + t.CusumScore.ToString("F2"));
-                sb.AppendLine("  Dominant: " + DominantFaultToText(t.DominantFault) +
-                    " | BPFO=" + t.BPFO_Hz.ToString("F2") +
-                    " BPFI=" + t.BPFI_Hz.ToString("F2") +
-                    " BSF=" + t.BSF_Hz.ToString("F2") +
-                    " FTF=" + t.FTF_Hz.ToString("F2"));
-                sb.AppendLine("  Stator: short L" + t.Stator_ShortLevel +
-                    " / gnd L" + t.Stator_GndLevel +
-                    " | NSR=" + t.Stator_NSR.ToString("F4") +
-                    " ZSR=" + t.Stator_ZSR.ToString("F4") +
-                    " HARM=" + t.Stator_HarmRatio.ToString("F4") +
-                    " IMB=" + t.Stator_Imbalance.ToString("F1") + "%");
-                sb.AppendLine("  Temp: " + FormatTemperature(t));
-
-                sb.AppendLine();
-                sb.AppendLine("LIVE TELEMETRY (MOVED FROM CONTROLLER PAGE)");
-                sb.AppendLine("  +----------------+-------------------------+");
-                sb.AppendLine("  | Metric         | Value                   |");
-                sb.AppendLine("  +----------------+-------------------------+");
-                AppendReportRow(sb, "BPFO_HZ", t.BPFO_Hz.ToString("F2"));
-                AppendReportRow(sb, "BPFI_HZ", t.BPFI_Hz.ToString("F2"));
-                AppendReportRow(sb, "BSF_HZ", t.BSF_Hz.ToString("F2"));
-                AppendReportRow(sb, "FTF_HZ", t.FTF_Hz.ToString("F2"));
-                AppendReportRow(sb, "FI", t.FaultIndex.ToString("F4"));
-                AppendReportRow(sb, "LV", t.FaultLevelString);
-                AppendReportRow(sb, "LS", t.Index_LS.ToString("F4"));
-                AppendReportRow(sb, "MI", t.Index_Music.ToString("F4"));
-                AppendReportRow(sb, "ES", t.Index_Esprit.ToString("F4"));
-                AppendReportRow(sb, "TK", t.Index_Teager.ToString("F4"));
-                AppendReportRow(sb, "SK", t.Index_SK.ToString("F4"));
-                AppendReportRow(sb, "WV", t.Index_Wavelet.ToString("F4"));
-                AppendReportRow(sb, "CY", t.Index_Cyclic.ToString("F4"));
-                AppendReportRow(sb, "SB", t.Index_Sideband.ToString("F4"));
-                AppendReportRow(sb, "ACF", t.Index_EnvAcf.ToString("F4"));
-                AppendReportRow(sb, "SKPK", t.SkPeak.ToString("F4") + " @ " + t.SkPeakHz.ToString("F2") + "Hz");
-                AppendReportRow(sb, "KB", t.KurtBandHz.ToString(CultureInfo.InvariantCulture));
-                AppendReportRow(sb, "CUSUM", t.CusumScore.ToString("F2"));
-                AppendReportRow(sb, "EMA", t.FaultIndex_Ema.ToString("F4"));
-                AppendReportRow(sb, "PF_O", t.Index_Bpfo.ToString("F4"));
-                AppendReportRow(sb, "PF_I", t.Index_Bpfi.ToString("F4"));
-                AppendReportRow(sb, "PF_B", t.Index_Bsf.ToString("F4"));
-                AppendReportRow(sb, "PF_T", t.Index_Ftf.ToString("F4"));
-                AppendReportRow(sb, "DOM", DominantFaultToText(t.DominantFault));
-                sb.AppendLine("  +----------------+-------------------------+");
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  ── Bearing Health ──────────────────────────────────────────────────    │");
+                sb.AppendLine("│  Fault Level  : " + t.FaultLevelString.PadRight(57) + "│");
+                sb.AppendLine("│  Fault Index  : " + t.FaultIndex.ToString("F4").PadRight(57) + "│");
+                sb.AppendLine("│  EMA          : " + t.FaultIndex_Ema.ToString("F4").PadRight(57) + "│");
+                sb.AppendLine("│  CUSUM Score  : " + t.CusumScore.ToString("F2").PadRight(57) + "│");
+                sb.AppendLine("│  Dominant     : " + DominantFaultToText(t.DominantFault).PadRight(57) + "│");
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  ── Bearing Frequencies (Hz) ───────────────────────────────────────    │");
+                sb.AppendLine("│  BPFO = " + t.BPFO_Hz.ToString("F2").PadRight(12) +
+                              "BPFI = " + t.BPFI_Hz.ToString("F2").PadRight(12) +
+                              "BSF = " + t.BSF_Hz.ToString("F2").PadRight(12) +
+                              "FTF = " + t.FTF_Hz.ToString("F2").PadRight(10) + "│");
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  ── Per-Technique Indices ──────────────────────────────────────────    │");
+                sb.AppendLine("│  +──────────────┬──────────────┬──────────────┬──────────────────────+  │");
+                sb.AppendLine("│  │ Technique    │ Index        │ Technique    │ Index                │  │");
+                sb.AppendLine("│  +──────────────┼──────────────┼──────────────┼──────────────────────+  │");
+                sb.AppendLine("│  │ FFT (LS)     │ " + t.Index_LS.ToString("F4").PadRight(13) +
+                              "│ MUSIC (MI)   │ " + t.Index_Music.ToString("F4").PadRight(21) + "│  │");
+                sb.AppendLine("│  │ ESPRIT (ES)  │ " + t.Index_Esprit.ToString("F4").PadRight(13) +
+                              "│ Teager (TK)  │ " + t.Index_Teager.ToString("F4").PadRight(21) + "│  │");
+                sb.AppendLine("│  │ SK           │ " + t.Index_SK.ToString("F4").PadRight(13) +
+                              "│ Wavelet (WV) │ " + t.Index_Wavelet.ToString("F4").PadRight(21) + "│  │");
+                sb.AppendLine("│  │ Cyclic (CY)  │ " + t.Index_Cyclic.ToString("F4").PadRight(13) +
+                              "│ Sideband (SB)│ " + t.Index_Sideband.ToString("F4").PadRight(21) + "│  │");
+                sb.AppendLine("│  │ EnvACF       │ " + t.Index_EnvAcf.ToString("F4").PadRight(13) +
+                              "│ SK Peak      │ " + (t.SkPeak.ToString("F4") + " @ " + t.SkPeakHz.ToString("F1") + "Hz").PadRight(21) + "│  │");
+                sb.AppendLine("│  +──────────────┴──────────────┴──────────────┴──────────────────────+  │");
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  ── Per-Fault Partial Indices ─────────────────────────────────────    │");
+                sb.AppendLine("│  PF_Outer = " + t.Index_Bpfo.ToString("F4").PadRight(10) +
+                              "PF_Inner = " + t.Index_Bpfi.ToString("F4").PadRight(10) +
+                              "PF_Ball = " + t.Index_Bsf.ToString("F4").PadRight(10) +
+                              "PF_Cage = " + t.Index_Ftf.ToString("F4").PadRight(6) + "│");
+                sb.AppendLine("│  Kurtosis Band: " + t.KurtBandHz.ToString(CultureInfo.InvariantCulture).PadRight(57) + "│");
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  ── Stator Winding Health ─────────────────────────────────────────    │");
+                sb.AppendLine("│  Short Level : " + t.Stator_ShortLevel.ToString().PadRight(10) +
+                              "Ground Level: " + t.Stator_GndLevel.ToString().PadRight(34) + "│");
+                sb.AppendLine("│  NSR = " + t.Stator_NSR.ToString("F4").PadRight(12) +
+                              "ZSR = " + t.Stator_ZSR.ToString("F4").PadRight(12) +
+                              "HARM = " + t.Stator_HarmRatio.ToString("F4").PadRight(12) +
+                              "IMB = " + t.Stator_Imbalance.ToString("F1").PadRight(4) + "%" + " │");
+                sb.AppendLine("│  Temperature : " + FormatTemperature(t).PadRight(58) + "│");
             }
             else
             {
-                sb.AppendLine("TELEMETRY SUMMARY");
-                sb.AppendLine("  No telemetry received yet.");
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  No telemetry data received yet.                                        │");
+                sb.AppendLine("│  Connect to H750 and wait for live telemetry stream.                    │");
             }
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("└──────────────────────────────────────────────────────────────────────────┘");
+            sb.AppendLine();
+
+            // ══════════════════════════════════════════════════════════════════════
+            // SECTION 4: MOTOR PARAMETERS
+            // ══════════════════════════════════════════════════════════════════════
+            sb.AppendLine("┌──────────────────────────────────────────────────────────────────────────┐");
+            sb.AppendLine("│  4. MOTOR / CONTROLLER PARAMETERS                                       │");
+            sb.AppendLine("├──────────────────────────────────────────────────────────────────────────┤");
 
             if (_lastFrame != null && _lastFrame.ReportMotorParams != null)
             {
                 MotorParameters mp = _lastFrame.ReportMotorParams;
-                sb.AppendLine();
-                sb.AppendLine("CONTROLLER [PARAMS] (from last full report)");
-                sb.AppendLine("  +----------------+-------------------------+");
-                sb.AppendLine("  | Metric         | Value                   |");
-                sb.AppendLine("  +----------------+-------------------------+");
-                AppendReportRow(sb, "RPM", mp.MotorRPM.ToString("F1"));
-                AppendReportRow(sb, "SLIP", mp.Slip.ToString("F4"));
-                AppendReportRow(sb, "BPFO", mp.BPFO.ToString("F4"));
-                AppendReportRow(sb, "BPFI", mp.BPFI.ToString("F4"));
-                AppendReportRow(sb, "BSF", mp.BSF.ToString("F4"));
-                AppendReportRow(sb, "FTF", mp.FTF.ToString("F4"));
-                AppendReportRow(sb, "LINE_HZ", mp.SupplyLineHz.ToString("F2"));
-                sb.AppendLine("  +----------------+-------------------------+");
-            }
-
-            sb.AppendLine();
-            sb.AppendLine("SPECTRAL TECHNIQUE RESULTS");
-            if (_lastFrame == null)
-            {
-                sb.AppendLine("  No spectral frame available.");
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  Motor RPM       : " + mp.MotorRPM.ToString("F1").PadRight(54) + "│");
+                sb.AppendLine("│  Slip            : " + mp.Slip.ToString("F4").PadRight(54) + "│");
+                sb.AppendLine("│  Supply Line (Hz): " + mp.SupplyLineHz.ToString("F2").PadRight(54) + "│");
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  Bearing Coefficients:                                                   │");
+                sb.AppendLine("│    BPFO = " + mp.BPFO.ToString("F4").PadRight(14) +
+                              "BPFI = " + mp.BPFI.ToString("F4").PadRight(14) +
+                              "BSF = " + mp.BSF.ToString("F4").PadRight(14) +
+                              "FTF = " + mp.FTF.ToString("F4").PadRight(5) + "│");
             }
             else
             {
-                sb.AppendLine("  +----------------+-------------------------+");
-                sb.AppendLine("  | Metric         | Value                   |");
-                sb.AppendLine("  +----------------+-------------------------+");
-                AppendReportRow(sb, "Mode", string.IsNullOrEmpty(_lastFrame.Mode) ? "n/a" : _lastFrame.Mode);
-                AppendReportRow(sb, "End marker", string.IsNullOrEmpty(_lastFrame.FinalReportSummary) ? "n/a" : _lastFrame.FinalReportSummary);
-                AppendReportRow(sb, "FOURIER", "Mean=" + _lastFrame.FourierPoints.Count +
-                    " P1=" + _lastFrame.FourierPhase1Points.Count +
-                    " P2=" + _lastFrame.FourierPhase2Points.Count +
-                    " P3=" + _lastFrame.FourierPhase3Points.Count);
-                AppendReportRow(sb, "MUSIC", "Mean=" + _lastFrame.MusicPoints.Count +
-                    " P1=" + _lastFrame.MusicPhase1Points.Count +
-                    " P2=" + _lastFrame.MusicPhase2Points.Count +
-                    " P3=" + _lastFrame.MusicPhase3Points.Count);
-                AppendReportRow(sb, "CYCLIC2", "Mean=" + _lastFrame.Cyclic2Points.Count +
-                    " P1=" + _lastFrame.Cyclic2Phase1Points.Count +
-                    " P2=" + _lastFrame.Cyclic2Phase2Points.Count +
-                    " P3=" + _lastFrame.Cyclic2Phase3Points.Count);
-                AppendReportRow(sb, "ESPRIT", "Peaks=" + _lastFrame.EspritFrequencies.Count);
-                AppendReportRow(sb, "SK", "Points=" + _lastFrame.SkPoints.Count);
-                AppendReportRow(sb, "WAVELET", "Points=" + _lastFrame.WaveletPoints.Count);
-                sb.AppendLine("  +----------------+-------------------------+");
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  No motor parameters received yet.                                      │");
+                sb.AppendLine("│  Use 'Full Report' button to retrieve controller parameters.            │");
             }
-
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("└──────────────────────────────────────────────────────────────────────────┘");
             sb.AppendLine();
+
+            // ══════════════════════════════════════════════════════════════════════
+            // SECTION 5: SPECTRAL FRAME DATA
+            // ══════════════════════════════════════════════════════════════════════
+            sb.AppendLine("┌──────────────────────────────────────────────────────────────────────────┐");
+            sb.AppendLine("│  5. SPECTRAL FRAME DATA                                                 │");
+            sb.AppendLine("├──────────────────────────────────────────────────────────────────────────┤");
+
+            if (_lastFrame != null)
+            {
+                string mode = string.IsNullOrEmpty(_lastFrame.Mode) ? "n/a" : _lastFrame.Mode;
+                string endMark = string.IsNullOrEmpty(_lastFrame.FinalReportSummary) ? "n/a" : _lastFrame.FinalReportSummary;
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  Mode       : " + mode.PadRight(59) + "│");
+                sb.AppendLine("│  End Marker : " + endMark.PadRight(59) + "│");
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  +─────────────────┬──────────┬──────────┬──────────┬──────────────+    │");
+                sb.AppendLine("│  │ Technique       │ Mean Pts │ Phase 1  │ Phase 2  │ Phase 3      │    │");
+                sb.AppendLine("│  +─────────────────┼──────────┼──────────┼──────────┼──────────────+    │");
+                sb.AppendLine("│  │ FOURIER         │ " +
+                    _lastFrame.FourierPoints.Count.ToString().PadRight(9) + "│ " +
+                    _lastFrame.FourierPhase1Points.Count.ToString().PadRight(9) + "│ " +
+                    _lastFrame.FourierPhase2Points.Count.ToString().PadRight(9) + "│ " +
+                    _lastFrame.FourierPhase3Points.Count.ToString().PadRight(13) + "│    │");
+                sb.AppendLine("│  │ MUSIC           │ " +
+                    _lastFrame.MusicPoints.Count.ToString().PadRight(9) + "│ " +
+                    _lastFrame.MusicPhase1Points.Count.ToString().PadRight(9) + "│ " +
+                    _lastFrame.MusicPhase2Points.Count.ToString().PadRight(9) + "│ " +
+                    _lastFrame.MusicPhase3Points.Count.ToString().PadRight(13) + "│    │");
+                sb.AppendLine("│  │ CYCLOSTATIONARY │ " +
+                    _lastFrame.Cyclic2Points.Count.ToString().PadRight(9) + "│ " +
+                    _lastFrame.Cyclic2Phase1Points.Count.ToString().PadRight(9) + "│ " +
+                    _lastFrame.Cyclic2Phase2Points.Count.ToString().PadRight(9) + "│ " +
+                    _lastFrame.Cyclic2Phase3Points.Count.ToString().PadRight(13) + "│    │");
+                sb.AppendLine("│  │ ESPRIT          │ " +
+                    _lastFrame.EspritFrequencies.Count.ToString().PadRight(9) + "│    —     │    —     │      —       │    │");
+                sb.AppendLine("│  │ SK              │ " +
+                    _lastFrame.SkPoints.Count.ToString().PadRight(9) + "│    —     │    —     │      —       │    │");
+                sb.AppendLine("│  │ WAVELET         │ " +
+                    _lastFrame.WaveletPoints.Count.ToString().PadRight(9) + "│    —     │    —     │      —       │    │");
+                sb.AppendLine("│  +─────────────────┴──────────┴──────────┴──────────┴──────────────+    │");
+            }
+            else
+            {
+                sb.AppendLine("│                                                                          │");
+                sb.AppendLine("│  No spectral frame available.                                           │");
+                sb.AppendLine("│  Use a technique button or 'Full Report' to acquire spectral data.      │");
+            }
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("└──────────────────────────────────────────────────────────────────────────┘");
+            sb.AppendLine();
+
+            // ══════════════════════════════════════════════════════════════════════
+            // SECTION 6: USB COMMAND REFERENCE
+            // ══════════════════════════════════════════════════════════════════════
             AppendUsbCommandReference(sb);
 
             rtbTechniqueReport.Text = sb.ToString();
@@ -2725,30 +2863,44 @@ namespace EES_MotorOverload_V1
         /// <summary>USB text/binary commands from H750 main.c HELP (USB_Process_TextLine).</summary>
         private static void AppendUsbCommandReference(StringBuilder sb)
         {
-            sb.AppendLine("H750 USB COMMAND MAP (main.c)");
-            sb.AppendLine("  +------------------+--------------------------------+---------------------------+");
-            sb.AppendLine("  | Command          | Firmware action                | PC app                    |");
-            sb.AppendLine("  +------------------+--------------------------------+---------------------------+");
-            AppendUsbCmdRow(sb, "PING", "OK", "Connect / ping");
-            AppendUsbCmdRow(sb, "GET", "RPM SLIP BPFO… LINE DATE TIME", "Read params");
-            AppendUsbCmdRow(sb, "REPORT / FULLREPORT", "Scalars+spectral+GRAPHDATA", "RequestReport()");
-            AppendUsbCmdRow(sb, "GRAPHDATA / GRAPHS", "Phase ABC, FFT, envelope", "RequestGraphData()");
-            AppendUsbCmdRow(sb, "PHASE3 / PHASECSV", "Raw phase CSV", "RequestPhaseCsv()");
-            AppendUsbCmdRow(sb, "FFTCSV … WAVELETCSV", "Single technique export", "Harmonics technique buttons");
-            AppendUsbCmdRow(sb, "RPM= SLIP= … LINE=", "Set parameter OK/ERR", "Settings + text protocol");
-            AppendUsbCmdRow(sb, "DATE / TIME", "Set RTC", "Optional clock sync");
-            AppendUsbCmdRow(sb, "SAVE LOAD DEFAULT", "QSPI params", "Settings");
-            AppendUsbCmdRow(sb, "SAVEADC", "ADC snapshot SPI1", "Settings");
-            AppendUsbCmdRow(sb, "CALIB SAVEBASE …", "Bearing baseline", "SendBaselineTextCommand");
-            AppendUsbCmdRow(sb, "CALIBST SAVESTST …", "Stator baseline", "SendBaselineTextCommand");
-            AppendUsbCmdRow(sb, "Binary 0x04–0x0B", "Set floats framed", "When text protocol off");
-            AppendUsbCmdRow(sb, "Binary 0x80", "GET_ALL_PARAMS", "ReadAllParametersBinary");
-            AppendUsbCmdRow(sb, "Binary 0x30–0x32", "Flash save/load/default", "Flash buttons");
-            AppendUsbCmdRow(sb, "Binary 0x40", "SAVE_ADC SPI1", "SaveAdcSnapshot");
-            AppendUsbCmdRow(sb, "Binary 0xFE", "PING", "Connect test");
-            sb.AppendLine("  +------------------+--------------------------------+---------------------------+");
-            sb.AppendLine("  End markers: ### END_FULL_REPORT (report), ### END_EXPORT (FFTCSV…),");
-            sb.AppendLine("  ### END_GRAPHDATA (graphdata), ### END_REPORT (spectral block only).");
+            sb.AppendLine("┌──────────────────────────────────────────────────────────────────────────┐");
+            sb.AppendLine("│  6. USB COMMAND REFERENCE (H750 main.c)                                 │");
+            sb.AppendLine("├──────────────────────────────────────────────────────────────────────────┤");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("│  ── Text Commands ─────────────────────────────────────────────────     │");
+            sb.AppendLine("│  +──────────────────────┬────────────────────────────────────────────+  │");
+            sb.AppendLine("│  │ Command              │ Description                                │  │");
+            sb.AppendLine("│  +──────────────────────┼────────────────────────────────────────────+  │");
+            sb.AppendLine("│  │ PING                 │ Connection test — returns OK                │  │");
+            sb.AppendLine("│  │ GET                  │ Read all parameters (RPM,SLIP,BPFO…)       │  │");
+            sb.AppendLine("│  │ REPORT / FULLREPORT  │ Full diagnostic: scalars + spectral + graph│  │");
+            sb.AppendLine("│  │ GRAPHDATA / GRAPHS   │ Phase ABC + FFT + envelope data            │  │");
+            sb.AppendLine("│  │ PHASE3 / PHASECSV    │ Raw 3-phase current CSV export             │  │");
+            sb.AppendLine("│  │ FFTCSV               │ FFT spectral data export                   │  │");
+            sb.AppendLine("│  │ MUSICCSV             │ MUSIC spectral data export                 │  │");
+            sb.AppendLine("│  │ ESPRITCSV            │ ESPRIT frequency estimation export         │  │");
+            sb.AppendLine("│  │ CYCLIC2CSV           │ Cyclostationary analysis export             │  │");
+            sb.AppendLine("│  │ SKCSV                │ Spectral Kurtosis data export              │  │");
+            sb.AppendLine("│  │ WAVELETCSV           │ Wavelet decomposition export               │  │");
+            sb.AppendLine("│  │ SAVE / LOAD / DEFAULT│ Flash parameter storage operations         │  │");
+            sb.AppendLine("│  │ SAVEADC              │ ADC snapshot to SPI1 NOR flash             │  │");
+            sb.AppendLine("│  │ CALIB / SAVEBASE     │ Bearing baseline calibration               │  │");
+            sb.AppendLine("│  │ CALIBST / SAVESTST   │ Stator baseline calibration                │  │");
+            sb.AppendLine("│  │ RPM= SLIP= LINE=    │ Set individual parameter (text protocol)   │  │");
+            sb.AppendLine("│  +──────────────────────┴────────────────────────────────────────────+  │");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("│  ── Binary Commands ───────────────────────────────────────────────     │");
+            sb.AppendLine("│  +──────────────────────┬────────────────────────────────────────────+  │");
+            sb.AppendLine("│  │ Code                 │ Description                                │  │");
+            sb.AppendLine("│  +──────────────────────┼────────────────────────────────────────────+  │");
+            sb.AppendLine("│  │ 0x04 – 0x0B          │ Set float parameters (framed)              │  │");
+            sb.AppendLine("│  │ 0x80                 │ GET_ALL_PARAMS (full parameter dump)       │  │");
+            sb.AppendLine("│  │ 0x30 – 0x32          │ Flash save / load / reset to default       │  │");
+            sb.AppendLine("│  │ 0x40                 │ SAVE_ADC to SPI1 NOR flash                 │  │");
+            sb.AppendLine("│  │ 0xFE                 │ PING (binary connection test)              │  │");
+            sb.AppendLine("│  +──────────────────────┴────────────────────────────────────────────+  │");
+            sb.AppendLine("│                                                                          │");
+            sb.AppendLine("└──────────────────────────────────────────────────────────────────────────┘");
         }
 
         private static void AppendUsbCmdRow(StringBuilder sb, string cmd, string fw, string pc)
