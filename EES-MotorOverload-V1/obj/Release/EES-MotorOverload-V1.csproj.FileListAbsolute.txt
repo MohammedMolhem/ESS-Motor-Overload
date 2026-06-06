@@ -1,0 +1,10 @@
+D:\ESS-Motor-Overload-copilot-remove-buttons-2and-arrange-others\EES-MotorOverload-V1\obj\Release\EES-MotorOverload-V1.csproj.AssemblyReference.cache
+D:\ESS-Motor-Overload-copilot-remove-buttons-2and-arrange-others\EES-MotorOverload-V1\obj\Release\EES_MotorOverload_V1.Properties.Resources.resources
+D:\ESS-Motor-Overload-copilot-remove-buttons-2and-arrange-others\EES-MotorOverload-V1\obj\Release\EES-MotorOverload-V1.csproj.GenerateResource.cache
+D:\ESS-Motor-Overload-copilot-remove-buttons-2and-arrange-others\EES-MotorOverload-V1\obj\Release\EES-MotorOverload-V1.csproj.CoreCompileInputs.cache
+D:\ESS-Motor-Overload-copilot-remove-buttons-2and-arrange-others\EES-MotorOverload-V1\bin\Release\EES-MotorOverload-V1.exe.config
+D:\ESS-Motor-Overload-copilot-remove-buttons-2and-arrange-others\EES-MotorOverload-V1\bin\Release\EES-MotorOverload-V1.exe
+D:\ESS-Motor-Overload-copilot-remove-buttons-2and-arrange-others\EES-MotorOverload-V1\bin\Release\EES-MotorOverload-V1.pdb
+D:\ESS-Motor-Overload-copilot-remove-buttons-2and-arrange-others\EES-MotorOverload-V1\obj\Release\EES-MotorOverload-V1.exe
+D:\ESS-Motor-Overload-copilot-remove-buttons-2and-arrange-others\EES-MotorOverload-V1\obj\Release\EES-MotorOverload-V1.pdb
+D:\ESS-Motor-Overload-copilot-remove-buttons-2and-arrange-others\EES-MotorOverload-V1\obj\Release\EES-MotorOverload-V1.exe.config
